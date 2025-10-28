@@ -112,6 +112,80 @@ def preprocess_for_bpm(ppg_signal, fs=30):
     return filtered
 
 
+def calculate_respiratory_rate_from_ppg(ppg_signal, fs=30, low_pass=0.13, high_pass=0.5):
+    """
+    Calculate respiratory rate in breaths per minute from PPG signal using FFT.
+    
+    Args:
+        ppg_signal: PPG signal array (1D or 2D)
+        fs: Sampling rate (frames per second), default=30
+        low_pass: Low frequency cutoff in Hz (default 0.13 = 8 breaths/min)
+        high_pass: High frequency cutoff in Hz (default 0.5 = 30 breaths/min)
+    
+    Returns:
+        Respiratory rate value in breaths per minute
+    """
+    # Ensure 2D array
+    ppg_signal = np.expand_dims(ppg_signal, 0) if len(ppg_signal.shape) == 1 else ppg_signal
+    
+    # Find next power of 2 for FFT
+    N = 1 if ppg_signal.shape[1] == 0 else 2 ** (ppg_signal.shape[1] - 1).bit_length()
+    
+    # Compute periodogram (power spectral density)
+    f_ppg, pxx_ppg = periodogram(ppg_signal, fs=fs, nfft=N, detrend=False)
+    
+    # Flatten pxx_ppg to handle 2D output
+    pxx_ppg = pxx_ppg.flatten()
+    
+    # Filter to respiratory rate range
+    mask = (f_ppg >= low_pass) & (f_ppg <= high_pass)
+    mask_freq = f_ppg[mask]
+    mask_power = pxx_ppg[mask]
+    
+    if len(mask_freq) == 0:
+        return 0.0
+    
+    # Find dominant frequency
+    peak_idx = np.argmax(mask_power)
+    dominant_freq = mask_freq[peak_idx]
+    
+    # Convert to breaths per minute
+    rr = dominant_freq * 60
+    
+    return float(rr)
+
+
+def preprocess_for_rr(ppg_signal, fs=30):
+    """
+    Preprocess PPG signal for respiratory rate calculation.
+    Apply bandpass filter and detrend.
+    
+    Args:
+        ppg_signal: Raw PPG signal
+        fs: Sampling rate
+    
+    Returns:
+        Processed PPG signal for respiratory rate
+    """
+    # Detrend
+    signal_length = len(ppg_signal)
+    lambda_value = 100
+    from scipy.sparse import spdiags
+    H = np.identity(signal_length)
+    ones = np.ones(signal_length)
+    minus_twos = -2 * np.ones(signal_length)
+    diags_data = np.array([ones, minus_twos, ones])
+    diags_index = np.array([0, 1, 2])
+    D = spdiags(diags_data, diags_index, (signal_length - 2), signal_length).toarray()
+    detrended = np.dot((H - np.linalg.inv(H + (lambda_value ** 2) * np.dot(D.T, D))), ppg_signal)
+    
+    # Bandpass filter [0.13, 0.5] Hz = [8, 30] breaths per minute
+    [b, a] = butter(1, [0.13 / fs * 2, 0.5 / fs * 2], btype='bandpass')
+    filtered = filtfilt(b, a, np.double(detrended))
+    
+    return filtered
+
+
 def initialize_model(config_path):
     """Initialize the DeepPhys model for inference"""
     global model, device, config
@@ -211,17 +285,19 @@ def predict_from_frames(frames, config):
     # Convert to numpy
     predictions_np = predictions.cpu().numpy().flatten()
     
-    # Calculate BPM from the prediction
-    # The model outputs PPG signal, convert to BPM
+    # Calculate BPM and Respiratory Rate from the prediction
+    # The model outputs PPG signal, convert to BPM and RR
     fs = 30  # Video sampling rate (frames per second)
     
-    # Preprocess PPG signal
-    ppg_processed = preprocess_for_bpm(predictions_np, fs=fs)
+    # Preprocess PPG signal for heart rate
+    ppg_processed_hr = preprocess_for_bpm(predictions_np, fs=fs)
+    bpm = calculate_bpm_from_ppg(ppg_processed_hr, fs=fs)
     
-    # Calculate BPM
-    bpm = calculate_bpm_from_ppg(ppg_processed, fs=fs)
+    # Preprocess PPG signal for respiratory rate
+    ppg_processed_rr = preprocess_for_rr(predictions_np, fs=fs)
+    rr = calculate_respiratory_rate_from_ppg(ppg_processed_rr, fs=fs)
     
-    return predictions_np, bpm
+    return predictions_np, bpm, rr
 
 
 async def handle_client(websocket, path):
@@ -263,13 +339,14 @@ async def handle_client(websocket, path):
                         if len(frame_buffer) >= chunk_size:
                             try:
                                 chunk = np.array(frame_buffer[:chunk_size])
-                                predictions, bpm = predict_from_frames(chunk, config)
+                                predictions, bpm, rr = predict_from_frames(chunk, config)
                                 frame_buffer = frame_buffer[chunk_size:]
                                 
                                 # Send prediction
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
+                                    'respiratory_rate': rr,
                                     'prediction': float(np.mean(predictions)),
                                     'predictions': predictions.flatten().tolist(),
                                     'frames_processed': chunk_size

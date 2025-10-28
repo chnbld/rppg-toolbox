@@ -87,9 +87,12 @@ async def main():
                     
                     if result.get('status') == 'success':
                         bpm = result.get('bpm', 0)
-                        print(f"\n✓ Prediction: {result['prediction']:.4f}, BPM: {bpm:.2f}")
-                        predictions.append(result['prediction'])
+                        rr = result.get('respiratory_rate', 0)
+                        print(f"\n✓ Prediction: {result['prediction']:.4f}")
+                        print(f"  Heart Rate: {bpm:.2f} BPM")
+                        print(f"  Respiratory Rate: {rr:.2f} breaths/min")
                         print(f"  Frames processed: {result['frames_processed']}")
+                        predictions.append(result['prediction'])
                     elif result.get('status') == 'buffering':
                         if frame_count % 30 == 0:
                             print(f"Buffering: {result['buffer_size']}/150 frames...")
