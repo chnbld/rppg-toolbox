@@ -23,7 +23,7 @@ TEST:
       DATA_TYPE: [ 'DiffNormalized','Standardized' ]
       LABEL_TYPE: DiffNormalized
       DO_CHUNK: True
-      CHUNK_LENGTH: 210
+      CHUNK_LENGTH: 150  # Reduced for lower memory usage on CPU
       CROP_FACE:
         DO_CROP_FACE: True
         BACKEND: 'HC'    # HC for Haar Cascade, Y5F for YOLO5Face
@@ -44,7 +44,7 @@ MODEL:
   DROP_RATE: 0.2
   NAME: DeepPhys
 INFERENCE:
-  BATCH_SIZE: 4
+  BATCH_SIZE: 1  # Reduced for CPU processing to avoid memory issues
   EVALUATION_METHOD: FFT        # "FFT" or "peak detection"
   EVALUATION_WINDOW:
     USE_SMALLER_WINDOW: False        # Change this if you'd like an evaluation window smaller than the test video length

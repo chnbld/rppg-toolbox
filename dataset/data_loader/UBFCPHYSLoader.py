@@ -106,7 +106,8 @@ class UBFCPHYSLoader(BaseLoader):
             video_path = os.path.join(data_dirs[i]['path'])
             
             # Read Frames
-            frames = self.read_video(video_path)
+            # Reduced to 800 frames for CPU processing to avoid memory issues
+            frames = self.read_video(video_path, max_frames=800)
 
             # Read Labels
             if config_preprocess.USE_PSUEDO_PPG_LABEL:
