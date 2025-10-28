@@ -262,6 +262,80 @@ def calculate_cardiac_stress_index(hrv, heart_rate):
     }
 
 
+def calculate_cardiac_workload(heart_rate, stress_index, respiratory_rate):
+    """
+    Calculate cardiac workload (myocardial work) from physiological metrics.
+    
+    Cardiac workload represents the amount of work the heart performs per minute.
+    Higher workload indicates increased myocardial oxygen consumption.
+    
+    Args:
+        heart_rate: Current heart rate in BPM
+        stress_index: Stress index (0-100)
+        respiratory_rate: Respiratory rate in breaths/min
+    
+    Returns:
+        Dictionary with workload metrics:
+        - workload_index: Normalized workload (0-100)
+        - workload_level: 'low', 'moderate', 'elevated', 'high'
+        - estimated_rpp: Rate-Pressure Product approximation
+        - metabolic_demand: Estimated metabolic demand
+    """
+    # Base workload from heart rate
+    resting_hr = 65
+    hr_excess = max(0, heart_rate - resting_hr)
+    hr_workload = min(100, (hr_excess / 85) * 100)
+    
+    # Add stress component
+    stress_factor = stress_index / 100.0
+    stress_workload = stress_factor * 30
+    
+    # Add respiratory component
+    rr_factor = max(0, min(1, (respiratory_rate - 12) / 20))
+    respiratory_workload = rr_factor * 20
+    
+    # Total workload
+    workload_index = (hr_workload * 0.6 + stress_workload * 0.25 + respiratory_workload * 0.15)
+    
+    # Determine workload level
+    if workload_index < 25:
+        workload_level = 'low'
+    elif workload_index < 50:
+        workload_level = 'moderate'
+    elif workload_index < 75:
+        workload_level = 'elevated'
+    else:
+        workload_level = 'high'
+    
+    # Estimate Rate-Pressure Product
+    estimated_sbp = 115 + (stress_index * 0.25)
+    estimated_rpp = heart_rate * estimated_sbp
+    
+    # Metabolic equivalent approximation
+    if heart_rate < 70:
+        met_estimate = 0.8
+    elif heart_rate < 90:
+        met_estimate = 1.2
+    elif heart_rate < 110:
+        met_estimate = 1.8
+    elif heart_rate < 130:
+        met_estimate = 2.5
+    else:
+        met_estimate = 3.5
+    
+    return {
+        'workload_index': float(workload_index),
+        'workload_level': workload_level,
+        'estimated_rpp': float(estimated_rpp),
+        'metabolic_demand': float(met_estimate),
+        'components': {
+            'heart_rate_component': float(hr_workload),
+            'stress_component': float(stress_workload),
+            'respiratory_component': float(respiratory_workload)
+        }
+    }
+
+
 def calculate_hrv_from_ppg(ppg_signal, fs=30):
     """
     Calculate Heart Rate Variability (HRV) metrics from PPG signal.
@@ -513,7 +587,10 @@ def predict_from_frames(frames, config):
     # Calculate cardiac stress index
     stress = calculate_cardiac_stress_index(hrv, bpm)
     
-    return predictions_np, bpm, rr, hrv, stress
+    # Calculate cardiac workload
+    workload = calculate_cardiac_workload(bpm, stress['stress_index'], rr)
+    
+    return predictions_np, bpm, rr, hrv, stress, workload
 
 
 @app.route('/')
@@ -574,7 +651,7 @@ def infer_frame():
             chunk = np.array(frame_buffer[:chunk_size])
             
             # Run prediction
-            predictions, bpm, rr, hrv, stress = predict_from_frames(chunk, config)
+            predictions, bpm, rr, hrv, stress, workload = predict_from_frames(chunk, config)
             
             # Remove processed frames from buffer
             frame_buffer = frame_buffer[chunk_size:]
@@ -588,6 +665,7 @@ def infer_frame():
                 'respiratory_rate': rr,
                 'hrv': hrv,
                 'cardiac_stress': stress,
+                'cardiac_workload': workload,
                 'bvp_signal': predictions.flatten().tolist(),
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),
@@ -644,7 +722,7 @@ def infer_frame_base64():
             chunk = np.array(frame_buffer[:chunk_size])
             
             # Run prediction
-            predictions, bpm, rr, hrv, stress = predict_from_frames(chunk, config)
+            predictions, bpm, rr, hrv, stress, workload = predict_from_frames(chunk, config)
             
             # Remove processed frames from buffer
             frame_buffer = frame_buffer[chunk_size:]
@@ -658,6 +736,7 @@ def infer_frame_base64():
                 'respiratory_rate': rr,
                 'hrv': hrv,
                 'cardiac_stress': stress,
+                'cardiac_workload': workload,
                 'bvp_signal': predictions.flatten().tolist(),
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),

@@ -90,6 +90,7 @@ async def main():
                         rr = result.get('respiratory_rate', 0)
                         hrv = result.get('hrv', {})
                         stress = result.get('cardiac_stress', {})
+                        workload = result.get('cardiac_workload', {})
                         print(f"\n✓ BVP Signal Analysis:")
                         print(f"  Mean Amplitude: {result.get('bvp_mean_amplitude', 0):.4f}")
                         print(f"  Std Amplitude: {result.get('bvp_std_amplitude', 0):.4f}")
@@ -103,6 +104,10 @@ async def main():
                         if stress:
                             print(f"  Cardiac Stress: {stress.get('stress_index', 0):.1f}/100 ({stress.get('stress_level', 'unknown')})")
                             print(f"    Autonomic Balance: {stress.get('autonomic_balance', 'unknown')}")
+                        if workload:
+                            print(f"  Cardiac Workload: {workload.get('workload_index', 0):.1f}/100 ({workload.get('workload_level', 'unknown')})")
+                            print(f"    Estimated RPP: {workload.get('estimated_rpp', 0):.0f}")
+                            print(f"    Metabolic Demand: {workload.get('metabolic_demand', 0):.1f} MET")
                         print(f"  Frames processed: {result['frames_processed']}")
                         predictions.append(result.get('bvp_mean_amplitude', result['prediction']))
                     elif result.get('status') == 'buffering':
