@@ -24,6 +24,8 @@ import numpy as np
 import torch
 import base64
 import json
+import scipy
+from scipy.signal import butter, filtfilt, periodogram
 from config import get_config
 from neural_methods.model.DeepPhys import DeepPhys
 
@@ -33,6 +35,78 @@ device = None
 config = None
 frame_buffer = []
 chunk_size = 150
+
+
+def calculate_bpm_from_ppg(ppg_signal, fs=30, low_pass=0.6, high_pass=3.3):
+    """
+    Calculate heart rate in BPM from PPG signal using FFT.
+    
+    Args:
+        ppg_signal: PPG signal array (1D or 2D)
+        fs: Sampling rate (frames per second), default=30
+        low_pass: Low frequency cutoff in Hz (default 0.6 = 36 BPM)
+        high_pass: High frequency cutoff in Hz (default 3.3 = 198 BPM)
+    
+    Returns:
+        BPM value
+    """
+    # Ensure 2D array
+    ppg_signal = np.expand_dims(ppg_signal, 0) if len(ppg_signal.shape) == 1 else ppg_signal
+    
+    # Find next power of 2 for FFT
+    N = 1 if ppg_signal.shape[1] == 0 else 2 ** (ppg_signal.shape[1] - 1).bit_length()
+    
+    # Compute periodogram (power spectral density)
+    f_ppg, pxx_ppg = periodogram(ppg_signal, fs=fs, nfft=N, detrend=False)
+    
+    # Filter to heart rate range
+    mask = (f_ppg >= low_pass) & (f_ppg <= high_pass)
+    mask_freq = f_ppg[mask]
+    mask_power = pxx_ppg[mask]
+    
+    if len(mask_freq) == 0:
+        return 0.0
+    
+    # Find dominant frequency
+    peak_idx = np.argmax(mask_power.flatten())
+    dominant_freq = mask_freq[peak_idx]
+    
+    # Convert to BPM
+    bpm = dominant_freq * 60
+    
+    return float(bpm)
+
+
+def preprocess_for_bpm(ppg_signal, fs=30):
+    """
+    Preprocess PPG signal for BPM calculation.
+    Apply bandpass filter and detrend.
+    
+    Args:
+        ppg_signal: Raw PPG signal
+        fs: Sampling rate
+    
+    Returns:
+        Processed PPG signal
+    """
+    # Detrend
+    signal_length = len(ppg_signal)
+    lambda_value = 100
+    from scipy.sparse import spdiags
+    H = np.identity(signal_length)
+    ones = np.ones(signal_length)
+    minus_twos = -2 * np.ones(signal_length)
+    diags_data = np.array([ones, minus_twos, ones])
+    diags_index = np.array([0, 1, 2])
+    from scipy.sparse import spdiags
+    D = spdiags(diags_data, diags_index, (signal_length - 2), signal_length).toarray()
+    detrended = np.dot((H - np.linalg.inv(H + (lambda_value ** 2) * np.dot(D.T, D))), ppg_signal)
+    
+    # Bandpass filter [0.6, 3.3] Hz = [36, 198] BPM
+    [b, a] = butter(1, [0.6 / fs * 2, 3.3 / fs * 2], btype='bandpass')
+    filtered = filtfilt(b, a, np.double(detrended))
+    
+    return filtered
 
 
 def initialize_model(config_path):
@@ -132,9 +206,19 @@ def predict_from_frames(frames, config):
         predictions = model(tensor)
     
     # Convert to numpy
-    predictions_np = predictions.cpu().numpy()
+    predictions_np = predictions.cpu().numpy().flatten()
     
-    return predictions_np
+    # Calculate BPM from the prediction
+    # The model outputs PPG signal, convert to BPM
+    fs = 30  # Video sampling rate (frames per second)
+    
+    # Preprocess PPG signal
+    ppg_processed = preprocess_for_bpm(predictions_np, fs=fs)
+    
+    # Calculate BPM
+    bpm = calculate_bpm_from_ppg(ppg_processed, fs=fs)
+    
+    return predictions_np, bpm
 
 
 async def handle_client(websocket, path):
@@ -175,12 +259,13 @@ async def handle_client(websocket, path):
                         # Process if we have enough frames
                         if len(frame_buffer) >= chunk_size:
                             chunk = np.array(frame_buffer[:chunk_size])
-                            predictions = predict_from_frames(chunk, config)
+                            predictions, bpm = predict_from_frames(chunk, config)
                             frame_buffer = frame_buffer[chunk_size:]
                             
                             # Send prediction
                             response = {
                                 'status': 'success',
+                                'bpm': bpm,
                                 'prediction': float(np.mean(predictions)),
                                 'predictions': predictions.flatten().tolist(),
                                 'frames_processed': chunk_size
