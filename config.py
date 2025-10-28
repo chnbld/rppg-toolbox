@@ -14,6 +14,11 @@ _C = CN()
 # Base config files
 _C.BASE = ['']
 # -----------------------------------------------------------------------------
+# Streaming Inference settings
+# -----------------------------------------------------------------------------
+_C.STREAMING_INFERENCE = True  # Set to True to skip preprocessing and run direct streaming inference
+
+# -----------------------------------------------------------------------------
 # Train settings
 # -----------------------------------------------------------------------------\
 _C.TOOLBOX_MODE = ""

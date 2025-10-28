@@ -137,6 +137,12 @@ class DeepPhysTrainer(BaseTrainer):
 
     def test(self, data_loader):
         """ Model evaluation on the testing dataset."""
+        # Check if streaming inference mode is enabled
+        if hasattr(self.config, 'STREAMING_INFERENCE') and self.config.STREAMING_INFERENCE:
+            # Direct streaming inference from raw video
+            self.streaming_inference_direct()
+            return
+            
         if data_loader["test"] is None:
             raise ValueError("No data for test")
         config = self.config
@@ -227,6 +233,154 @@ class DeepPhysTrainer(BaseTrainer):
         calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
             self.save_test_outputs(predictions, labels, self.config)
+
+    def streaming_inference_direct(self):
+        """Direct streaming inference without preprocessing step."""
+        import cv2
+        import glob
+        config = self.config
+        
+        # Find video files in the raw data path
+        data_path = config.TEST.DATA.DATA_PATH
+        video_files = glob.glob(os.path.join(data_path, "**/*.avi"), recursive=True)
+        
+        if not video_files:
+            raise ValueError(f"No video files found in {data_path}")
+        
+        print(f"\nFound {len(video_files)} video files")
+        
+        # Process each video
+        all_predictions = {}
+        all_labels = {}
+        
+        for video_path in video_files:
+            print(f"\nProcessing: {os.path.basename(video_path)}")
+            
+            # Find corresponding BVP file
+            video_name = os.path.basename(video_path).replace(".avi", "")
+            bvp_file = video_path.replace(".avi", ".csv").replace("vid_", "bvp_")
+            
+            if not os.path.exists(bvp_file):
+                print(f"Warning: BVP file not found: {bvp_file}")
+                bvp_file = None
+            
+            # Run streaming inference
+            preds, labels = self.streaming_inference_from_video(video_path, bvp_file, config)
+            
+            video_id = os.path.basename(video_path)
+            all_predictions[video_id] = preds
+            all_labels[video_id] = labels
+        
+        # Calculate metrics if labels available
+        if any(all_labels.values()):
+            from evaluation.metrics import calculate_metrics
+            calculate_metrics(all_predictions, all_labels, self.config)
+        
+        return all_predictions, all_labels
+
+    def streaming_inference_from_video(self, video_path, bvp_path, config):
+        """Direct streaming inference from raw video without saving preprocessed data.
+        
+        Args:
+            video_path: path to video file
+            bvp_path: path to bvp ground truth file
+            config: configuration object
+            
+        Returns:
+            tuple: (predictions, labels) dictionaries
+        """
+        import cv2
+        import numpy as np
+        from dataset.data_loader.UBFCPHYSLoader import UBFCPHYSLoader
+        
+        print("\n" + "=" * 60)
+        print("DIRECT STREAMING INFERENCE MODE")
+        print("=" * 60)
+        
+        # Load model
+        if not os.path.exists(config.INFERENCE.MODEL_PATH):
+            raise ValueError("Inference model path error!")
+        self.model.load_state_dict(torch.load(config.INFERENCE.MODEL_PATH, map_location=self.device))
+        print("✓ Model loaded")
+        
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        
+        # Stream video and process in chunks
+        predictions = dict()
+        labels = dict()
+        
+        # Read video using streaming method
+        chunk_size = 150  # Process 150 frames at a time
+        from dataset.data_loader.UBFCPHYSLoader import UBFCPHYSLoader
+        loader = UBFCPHYSLoader("test", "", config.TEST.DATA, self.device)
+        
+        print("\nStarting video stream processing...")
+        chunk_idx = 0
+        
+        for frames_chunk, start_idx, end_idx in UBFCPHYSLoader.stream_video_in_chunks(
+            video_path, chunk_size=chunk_size, max_frames=800
+        ):
+            print(f"\n[Processing chunk {chunk_idx + 1}] Frames {start_idx}-{end_idx}")
+            
+            # Read labels for this chunk
+            if bvp_path:
+                bvps_full = loader.read_wave(bvp_path)
+                bvps_chunk = bvps_full[start_idx:end_idx]
+            else:
+                bvps_chunk = None
+            
+            # Preprocess this chunk
+            # Note: This is a simplified preprocessing - in production you'd use full preprocessing
+            # For now, we'll just resize and normalize
+            processed_frames = []
+            for frame in frames_chunk:
+                # Resize frame
+                resized = cv2.resize(frame, (config.TEST.DATA.PREPROCESS.RESIZE.W, 
+                                            config.TEST.DATA.PREPROCESS.RESIZE.H))
+                processed_frames.append(resized)
+            
+            processed_frames = np.array(processed_frames)
+            
+            # Convert to tensor and run inference
+            frames_tensor = torch.from_numpy(processed_frames).float()
+            frames_tensor = frames_tensor.permute(0, 3, 1, 2)  # HWC to CHW
+            frames_tensor = frames_tensor.unsqueeze(0)  # Add batch dimension
+            frames_tensor = frames_tensor.to(self.device)
+            
+            # Reshape for model: (batch, frames, channels, height, width)
+            N, T, C, H, W = frames_tensor.shape
+            frames_tensor = frames_tensor.view(N * T, C, H, W)
+            
+            with torch.no_grad():
+                pred_ppg = self.model(frames_tensor)
+            
+            # Store predictions
+            if bvps_chunk is not None:
+                labels[chunk_idx] = torch.from_numpy(bvps_chunk).float().to(self.device)
+            predictions[chunk_idx] = pred_ppg
+            
+            # Print real-time results
+            pred_mean = pred_ppg.mean().item()
+            pred_std = pred_ppg.std().item()
+            if bvps_chunk is not None:
+                label_mean = bvps_chunk.mean()
+                print(f"  → Pred: {pred_mean:.4f}±{pred_std:.4f}, Label: {label_mean:.4f}")
+            else:
+                print(f"  → Pred: {pred_mean:.4f}±{pred_std:.4f}")
+            
+            chunk_idx += 1
+            
+            # Clean up memory
+            del frames_chunk, processed_frames, frames_tensor, pred_ppg
+            import gc
+            gc.collect()
+        
+        print("\n" + "=" * 60)
+        print("Streaming inference complete!")
+        print("=" * 60)
+        
+        return predictions, labels
 
     def save_model(self, index):
         """Inits parameters from args and the writer for TensorboardX."""
