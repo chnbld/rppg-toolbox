@@ -59,6 +59,9 @@ def calculate_bpm_from_ppg(ppg_signal, fs=30, low_pass=0.6, high_pass=3.3):
     # Compute periodogram (power spectral density)
     f_ppg, pxx_ppg = periodogram(ppg_signal, fs=fs, nfft=N, detrend=False)
     
+    # Flatten pxx_ppg to handle 2D output
+    pxx_ppg = pxx_ppg.flatten()
+    
     # Filter to heart rate range
     mask = (f_ppg >= low_pass) & (f_ppg <= high_pass)
     mask_freq = f_ppg[mask]
@@ -68,7 +71,7 @@ def calculate_bpm_from_ppg(ppg_signal, fs=30, low_pass=0.6, high_pass=3.3):
         return 0.0
     
     # Find dominant frequency
-    peak_idx = np.argmax(mask_power.flatten())
+    peak_idx = np.argmax(mask_power)
     dominant_freq = mask_freq[peak_idx]
     
     # Convert to BPM
@@ -258,19 +261,26 @@ async def handle_client(websocket, path):
                         
                         # Process if we have enough frames
                         if len(frame_buffer) >= chunk_size:
-                            chunk = np.array(frame_buffer[:chunk_size])
-                            predictions, bpm = predict_from_frames(chunk, config)
-                            frame_buffer = frame_buffer[chunk_size:]
-                            
-                            # Send prediction
-                            response = {
-                                'status': 'success',
-                                'bpm': bpm,
-                                'prediction': float(np.mean(predictions)),
-                                'predictions': predictions.flatten().tolist(),
-                                'frames_processed': chunk_size
-                            }
-                            await websocket.send(json.dumps(response))
+                            try:
+                                chunk = np.array(frame_buffer[:chunk_size])
+                                predictions, bpm = predict_from_frames(chunk, config)
+                                frame_buffer = frame_buffer[chunk_size:]
+                                
+                                # Send prediction
+                                response = {
+                                    'status': 'success',
+                                    'bpm': bpm,
+                                    'prediction': float(np.mean(predictions)),
+                                    'predictions': predictions.flatten().tolist(),
+                                    'frames_processed': chunk_size
+                                }
+                                await websocket.send(json.dumps(response))
+                            except Exception as e:
+                                print(f"Error in prediction: {e}")
+                                await websocket.send(json.dumps({
+                                    'status': 'error',
+                                    'error': str(e)
+                                }))
                         else:
                             # Send buffering status
                             response = {
@@ -280,7 +290,10 @@ async def handle_client(websocket, path):
                             }
                             await websocket.send(json.dumps(response))
                     else:
-                        await websocket.send(json.dumps({'error': 'Failed to decode image'}))
+                        await websocket.send(json.dumps({
+                            'status': 'error',
+                            'error': 'Failed to decode image'
+                        }))
                 
                 elif command == 'reset':
                     frame_buffer = []
@@ -295,12 +308,21 @@ async def handle_client(websocket, path):
                     await websocket.send(json.dumps(response))
                 
                 else:
-                    await websocket.send(json.dumps({'error': f'Unknown command: {command}'}))
+                    await websocket.send(json.dumps({
+                        'status': 'error',
+                        'error': f'Unknown command: {command}'
+                    }))
                     
             except json.JSONDecodeError:
-                await websocket.send(json.dumps({'error': 'Invalid JSON'}))
+                await websocket.send(json.dumps({
+                    'status': 'error',
+                    'error': 'Invalid JSON'
+                }))
             except Exception as e:
-                await websocket.send(json.dumps({'error': str(e)}))
+                await websocket.send(json.dumps({
+                    'status': 'error',
+                    'error': str(e)
+                }))
                 print(f"Error: {e}")
     
     except websockets.exceptions.ConnectionClosed:

@@ -49,6 +49,9 @@ def calculate_bpm_from_ppg(ppg_signal, fs=30, low_pass=0.6, high_pass=3.3):
     # Compute periodogram (power spectral density)
     f_ppg, pxx_ppg = periodogram(ppg_signal, fs=fs, nfft=N, detrend=False)
     
+    # Flatten pxx_ppg to handle 2D output
+    pxx_ppg = pxx_ppg.flatten()
+    
     # Filter to heart rate range
     mask = (f_ppg >= low_pass) & (f_ppg <= high_pass)
     mask_freq = f_ppg[mask]
@@ -58,7 +61,7 @@ def calculate_bpm_from_ppg(ppg_signal, fs=30, low_pass=0.6, high_pass=3.3):
         return 0.0
     
     # Find dominant frequency
-    peak_idx = np.argmax(mask_power.flatten())
+    peak_idx = np.argmax(mask_power)
     dominant_freq = mask_freq[peak_idx]
     
     # Convert to BPM

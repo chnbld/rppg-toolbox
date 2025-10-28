@@ -85,13 +85,17 @@ async def main():
                     # Send frame
                     result = await send_frame_async(websocket, frame)
                     
-                    if result['status'] == 'success':
-                        print(f"\n✓ Prediction: {result['prediction']:.4f}")
+                    if result.get('status') == 'success':
+                        bpm = result.get('bpm', 0)
+                        print(f"\n✓ Prediction: {result['prediction']:.4f}, BPM: {bpm:.2f}")
                         predictions.append(result['prediction'])
                         print(f"  Frames processed: {result['frames_processed']}")
-                    elif result['status'] == 'buffering':
+                    elif result.get('status') == 'buffering':
                         if frame_count % 30 == 0:
                             print(f"Buffering: {result['buffer_size']}/150 frames...")
+                    elif result.get('status') == 'error':
+                        print(f"\n✗ Error: {result.get('error', 'Unknown error')}")
+                        break
                     
                     frame_count += 1
                     await asyncio.sleep(0.033)  # ~30 FPS
