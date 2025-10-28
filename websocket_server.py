@@ -155,6 +155,85 @@ def calculate_respiratory_rate_from_ppg(ppg_signal, fs=30, low_pass=0.13, high_p
     return float(rr)
 
 
+def calculate_hrv_from_ppg(ppg_signal, fs=30):
+    """
+    Calculate Heart Rate Variability (HRV) metrics from PPG signal.
+    
+    Args:
+        ppg_signal: PPG signal array
+        fs: Sampling rate (frames per second), default=30
+    
+    Returns:
+        Dictionary with HRV metrics:
+        - sdnn: Standard deviation of RR intervals (ms)
+        - rmssd: Root mean square of successive differences (ms)
+        - pnn50: Percentage of intervals differing by >50ms (%)
+        - mean_rr: Mean RR interval (ms)
+        - mean_hr: Mean heart rate (bpm)
+    """
+    # Find peaks in the PPG signal
+    from scipy.signal import find_peaks
+    
+    # Detect peaks with minimum distance
+    min_distance = int(fs * 0.6)  # At least 0.6s between peaks (max 100 bpm)
+    peaks, properties = find_peaks(ppg_signal, distance=min_distance)
+    
+    if len(peaks) < 2:
+        # Not enough peaks for HRV calculation
+        return {
+            'sdnn': 0.0,
+            'rmssd': 0.0,
+            'pnn50': 0.0,
+            'mean_rr': 0.0,
+            'mean_hr': 0.0
+        }
+    
+    # Calculate RR intervals (time between peaks in milliseconds)
+    rr_intervals = np.diff(peaks) / fs * 1000  # Convert to ms
+    
+    # Remove outliers (RR intervals that are too short or too long)
+    # Filter out intervals < 400ms (HR > 150) or > 2000ms (HR < 30)
+    valid_intervals = rr_intervals[(rr_intervals >= 400) & (rr_intervals <= 2000)]
+    
+    if len(valid_intervals) < 2:
+        return {
+            'sdnn': 0.0,
+            'rmssd': 0.0,
+            'pnn50': 0.0,
+            'mean_rr': np.mean(rr_intervals) if len(rr_intervals) > 0 else 0.0,
+            'mean_hr': 60000 / np.mean(rr_intervals) if len(rr_intervals) > 0 else 0.0
+        }
+    
+    # Calculate time-domain HRV metrics
+    mean_rr = np.mean(valid_intervals)
+    sdnn = np.std(valid_intervals)
+    
+    # Calculate RMSSD (Root Mean Square of Successive Differences)
+    if len(valid_intervals) > 1:
+        differences = np.diff(valid_intervals)
+        rmssd = np.sqrt(np.mean(differences ** 2))
+    else:
+        rmssd = 0.0
+    
+    # Calculate pNN50 (percentage of adjacent RR intervals differing by >50ms)
+    if len(valid_intervals) > 1:
+        nn50_count = np.sum(np.abs(differences) > 50)
+        pnn50 = (nn50_count / len(differences)) * 100 if len(differences) > 0 else 0.0
+    else:
+        pnn50 = 0.0
+    
+    # Calculate mean heart rate
+    mean_hr = 60000 / mean_rr if mean_rr > 0 else 0.0
+    
+    return {
+        'sdnn': float(sdnn),
+        'rmssd': float(rmssd),
+        'pnn50': float(pnn50),
+        'mean_rr': float(mean_rr),
+        'mean_hr': float(mean_hr)
+    }
+
+
 def preprocess_for_rr(ppg_signal, fs=30):
     """
     Preprocess PPG signal for respiratory rate calculation.
@@ -297,7 +376,10 @@ def predict_from_frames(frames, config):
     ppg_processed_rr = preprocess_for_rr(predictions_np, fs=fs)
     rr = calculate_respiratory_rate_from_ppg(ppg_processed_rr, fs=fs)
     
-    return predictions_np, bpm, rr
+    # Calculate HRV metrics from the preprocessed signal
+    hrv = calculate_hrv_from_ppg(ppg_processed_hr, fs=fs)
+    
+    return predictions_np, bpm, rr, hrv
 
 
 async def handle_client(websocket, path):
@@ -339,14 +421,15 @@ async def handle_client(websocket, path):
                         if len(frame_buffer) >= chunk_size:
                             try:
                                 chunk = np.array(frame_buffer[:chunk_size])
-                                predictions, bpm, rr = predict_from_frames(chunk, config)
+                                predictions, bpm, rr, hrv = predict_from_frames(chunk, config)
                                 frame_buffer = frame_buffer[chunk_size:]
                                 
-                                # Send prediction
+                                # Send prediction with HRV metrics
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
                                     'respiratory_rate': rr,
+                                    'hrv': hrv,
                                     'prediction': float(np.mean(predictions)),
                                     'predictions': predictions.flatten().tolist(),
                                     'frames_processed': chunk_size

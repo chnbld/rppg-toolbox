@@ -88,9 +88,15 @@ async def main():
                     if result.get('status') == 'success':
                         bpm = result.get('bpm', 0)
                         rr = result.get('respiratory_rate', 0)
+                        hrv = result.get('hrv', {})
                         print(f"\n✓ Prediction: {result['prediction']:.4f}")
                         print(f"  Heart Rate: {bpm:.2f} BPM")
                         print(f"  Respiratory Rate: {rr:.2f} breaths/min")
+                        if hrv:
+                            print(f"  HRV:")
+                            print(f"    SDNN: {hrv.get('sdnn', 0):.2f} ms")
+                            print(f"    RMSSD: {hrv.get('rmssd', 0):.2f} ms")
+                            print(f"    pNN50: {hrv.get('pnn50', 0):.2f}%")
                         print(f"  Frames processed: {result['frames_processed']}")
                         predictions.append(result['prediction'])
                     elif result.get('status') == 'buffering':
