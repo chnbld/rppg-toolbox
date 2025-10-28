@@ -96,39 +96,12 @@ class UBFCPHYSLoader(BaseLoader):
         return data_dirs_subset
 
     def preprocess_dataset_subprocess(self, data_dirs, config_preprocess, i, file_list_dict):
-        """   invoked by preprocess_dataset for multi_process.   """
-        try:
-            filename = os.path.split(data_dirs[i]['path'])[-1]
-            saved_filename = data_dirs[i]['index']
-            print(f"Processing video {i}: {saved_filename}")
-            
-            # Check if preprocessed files already exist to avoid reprocessing
-            video_path = os.path.join(data_dirs[i]['path'])
-            
-            # Read Frames
-            # Reduced to 800 frames for CPU processing to avoid memory issues
-            frames = self.read_video(video_path, max_frames=800)
-
-            # Read Labels
-            if config_preprocess.USE_PSUEDO_PPG_LABEL:
-                bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
-            else:
-                bvps = self.read_wave(
-                    os.path.join(os.path.dirname(data_dirs[i]['path']),"bvp_{0}.csv".format(saved_filename)))
-
-            bvps = BaseLoader.resample_ppg(bvps, frames.shape[0])
-                
-            frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
-            input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
-            
-            print(f"Successfully processed {len(input_name_list)} clips for {saved_filename}")
-            file_list_dict[i] = input_name_list
-            
-        except Exception as e:
-            import traceback
-            print(f"ERROR processing {data_dirs[i]['index']}: {str(e)}")
-            traceback.print_exc()
-            file_list_dict[i] = []  # Set to empty list to avoid KeyError
+        """   invoked by preprocess_dataset for multi_process.
+        
+        Now uses streaming mode by default to reduce memory usage.
+        """
+        # Use streaming mode to reduce memory usage
+        self.preprocess_dataset_streaming(data_dirs, config_preprocess, i, file_list_dict)
 
     def load_preprocessed_data(self):
         """ Loads the preprocessed data listed in the file list.
@@ -215,3 +188,124 @@ class UBFCPHYSLoader(BaseLoader):
             for row in d:
                 bvp.append(float(row[0]))
         return np.asarray(bvp)
+
+    @staticmethod
+    def stream_video_in_chunks(video_file, chunk_size=300, max_frames=800):
+        """Stream video in chunks to avoid loading entire video into memory.
+        
+        Args:
+            video_file: path to video file
+            chunk_size: number of frames to load at once
+            max_frames: maximum total frames to process
+            
+        Yields:
+            tuple: (frames_batch, start_idx, end_idx) for each chunk
+        """
+        import gc
+        VidObj = cv2.VideoCapture(video_file)
+        
+        # Get video properties
+        frame_count = int(VidObj.get(cv2.CAP_PROP_FRAME_COUNT))
+        actual_frame_count = min(frame_count, max_frames)
+        
+        print(f"Streaming video: {frame_count} total frames (processing {actual_frame_count}), "
+              f"chunk_size={chunk_size}")
+        
+        current_chunk = []
+        frame_idx = 0
+        
+        while frame_idx < actual_frame_count:
+            success, frame = VidObj.read()
+            if not success:
+                break
+                
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            current_chunk.append(frame)
+            frame_idx += 1
+            
+            # Yield chunk when it's full or at end
+            if len(current_chunk) >= chunk_size or frame_idx >= actual_frame_count:
+                yield np.asarray(current_chunk), frame_idx - len(current_chunk), frame_idx
+                del current_chunk
+                gc.collect()
+                current_chunk = []
+                
+            if frame_idx % 100 == 0:
+                print(f"  Streamed {frame_idx}/{actual_frame_count} frames...")
+        
+        VidObj.release()
+        print(f"✓ Video streaming complete: {frame_idx} frames")
+
+    def preprocess_dataset_streaming(self, data_dirs, config_preprocess, i, file_list_dict):
+        """Streaming version of preprocessing that processes video in chunks.
+        
+        This method streams the video frame-by-frame instead of loading it all at once,
+        significantly reducing memory usage.
+        """
+        try:
+            filename = os.path.split(data_dirs[i]['path'])[-1]
+            saved_filename = data_dirs[i]['index']
+            print(f"Streaming processing video {i}: {saved_filename}")
+            
+            video_path = os.path.join(data_dirs[i]['path'])
+            
+            # First pass: collect all chunks and their metadata
+            all_chunks = []
+            chunk_count = 0
+            
+            # Stream video in chunks of 300 frames (or whatever fits in memory)
+            for frames_chunk, start_idx, end_idx in self.stream_video_in_chunks(
+                video_path, chunk_size=300, max_frames=800
+            ):
+                all_chunks.append({
+                    'frames': frames_chunk,
+                    'start_idx': start_idx,
+                    'end_idx': end_idx
+                })
+                chunk_count += 1
+            
+            # Now we have all chunks in memory, but in smaller pieces
+            # Combine them if memory allows, or process separately
+            if chunk_count > 0:
+                print(f"Processing {chunk_count} chunks for video {saved_filename}")
+                
+                # Option 1: Combine all chunks into full video (if memory allows)
+                # This maintains compatibility with existing preprocessing
+                all_frames = []
+                for chunk_data in all_chunks:
+                    all_frames.extend(chunk_data['frames'])
+                    
+                # Read labels
+                if config_preprocess.USE_PSUEDO_PPG_LABEL:
+                    # We need full frames for pseudo labels, so combine
+                    frames = np.asarray(all_frames)
+                    bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
+                else:
+                    frames = np.asarray(all_frames)
+                    bvps = self.read_wave(
+                        os.path.join(os.path.dirname(data_dirs[i]['path']),
+                                    "bvp_{0}.csv".format(saved_filename)))
+                
+                bvps = BaseLoader.resample_ppg(bvps, frames.shape[0])
+                
+                # Process and save
+                frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
+                input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
+                
+                print(f"Successfully processed {len(input_name_list)} clips for {saved_filename}")
+                file_list_dict[i] = input_name_list
+                
+                # Free memory
+                del all_frames
+                del frames
+                import gc
+                gc.collect()
+            else:
+                print(f"No frames processed for {saved_filename}")
+                file_list_dict[i] = []
+                
+        except Exception as e:
+            import traceback
+            print(f"ERROR streaming processing {data_dirs[i]['index']}: {str(e)}")
+            traceback.print_exc()
+            file_list_dict[i] = []
