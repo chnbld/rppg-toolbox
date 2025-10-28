@@ -353,14 +353,12 @@ class DeepPhysTrainer(BaseTrainer):
                 bvps_chunk = None
             
             # Preprocess this chunk
-            # Note: This is a simplified preprocessing - in production you'd use full preprocessing
-            # For now, we'll just resize and normalize
-            processed_frames = []
+            # DeepPhys model expects 6 channels: first 3 are diff-normalized, last 3 are raw
+            print(f"  Processing {len(frames_chunk)} frames...")
+            
+            # Step 1: Resize frames and normalize
+            raw_frames = []
             for frame in frames_chunk:
-                # Debug: check frame shape
-                if chunk_idx == 0 and len(processed_frames) == 0:
-                    print(f"  Original frame shape: {frame.shape}")
-                
                 # Ensure frame has 3 channels
                 if len(frame.shape) == 2:
                     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
@@ -375,23 +373,39 @@ class DeepPhysTrainer(BaseTrainer):
                                             config.TEST.DATA.PREPROCESS.RESIZE.H))
                 # Normalize to [0, 1]
                 resized = resized.astype(np.float32) / 255.0
-                processed_frames.append(resized)
+                raw_frames.append(resized)
             
-            processed_frames = np.array(processed_frames)  # Shape: (num_frames, H, W, C)
-            print(f"  Processed frames array shape: {processed_frames.shape}")
+            raw_frames = np.array(raw_frames)  # Shape: (num_frames, H, W, 3)
             
-            # Convert to tensor and reshape for model
-            frames_tensor = torch.from_numpy(processed_frames).float()  # (num_frames, H, W, C)
-            print(f"  Tensor shape before permute: {frames_tensor.shape}")
+            # Step 2: Compute diff-normalized frames
+            n, h, w, c = raw_frames.shape
+            diffnormalized_len = n - 1
+            diff_frames = np.zeros((diffnormalized_len, h, w, c), dtype=np.float32)
             
-            frames_tensor = frames_tensor.permute(0, 3, 1, 2)  # (num_frames, C, H, W)
-            print(f"  Tensor shape after permute: {frames_tensor.shape}")
+            for j in range(diffnormalized_len):
+                diff_frames[j, :, :, :] = (raw_frames[j + 1, :, :, :] - raw_frames[j, :, :, :]) / (
+                        raw_frames[j + 1, :, :, :] + raw_frames[j, :, :, :] + 1e-7)
+            
+            # Normalize diff frames by std
+            diff_frames = diff_frames / (np.std(diff_frames) + 1e-7)
+            
+            # Pad last frame for diff
+            diff_frames_padded = np.append(diff_frames, diff_frames[-1:, :, :, :], axis=0)
+            
+            # Step 3: Concatenate diff and raw to get 6 channels
+            processed_frames = np.concatenate([diff_frames_padded, raw_frames], axis=-1)  # (num_frames, H, W, 6)
+            
+            print(f"  Final processed frames shape: {processed_frames.shape}")
+            
+            # Step 4: Convert to tensor
+            frames_tensor = torch.from_numpy(processed_frames).float()  # (num_frames, H, W, 6)
+            frames_tensor = frames_tensor.permute(0, 3, 1, 2)  # (num_frames, 6, H, W)
+            
+            print(f"  Tensor shape: {frames_tensor.shape}")
             
             frames_tensor = frames_tensor.to(self.device)
             
             # Model expects input of shape (batch * frames, C, H, W)
-            # No need to add batch dimension since we're treating frames as batch
-            
             with torch.no_grad():
                 pred_ppg = self.model(frames_tensor)
             
