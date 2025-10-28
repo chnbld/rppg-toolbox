@@ -4,14 +4,26 @@ Faster than REST API - uses persistent connection and binary frames
 """
 
 import asyncio
-import websockets
-import cv2
+import sys
+import os
+
+try:
+    import websockets
+except ImportError:
+    print("ERROR: websockets not installed. Run: pip install websockets")
+    sys.exit(1)
+
+try:
+    import cv2
+except ImportError:
+    print("ERROR: opencv-python not found.")
+    print("Run: pip install opencv-python-headless")
+    sys.exit(1)
+
 import numpy as np
 import torch
 import base64
 import json
-import os
-import sys
 from config import get_config
 from neural_methods.model.DeepPhys import DeepPhys
 
