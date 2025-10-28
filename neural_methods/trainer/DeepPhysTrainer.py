@@ -171,8 +171,10 @@ class DeepPhysTrainer(BaseTrainer):
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
+        print("=" * 60)
+        
         with torch.no_grad():
-            for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
+            for batch_idx, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
                 data_test, labels_test = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
@@ -193,27 +195,38 @@ class DeepPhysTrainer(BaseTrainer):
                         labels[subj_index] = dict()
                     predictions[subj_index][sort_index] = pred_ppg_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
                     labels[subj_index][sort_index] = labels_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
+                
+                # Print real-time predictions as each batch is processed
+                print(f"\n[Batch {batch_idx + 1}] Processed batch, current predictions:")
+                for idx in range(batch_size):
+                    subj_index = test_batch[2][idx]
+                    sort_index = int(test_batch[3][idx])
+                    pred_chunk = pred_ppg_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
+                    label_chunk = labels_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
+                    
+                    # Show summary statistics
+                    pred_mean = pred_chunk.mean().item()
+                    pred_std = pred_chunk.std().item()
+                    label_mean = label_chunk.mean().item()
+                    
+                    print(f"  Subject {subj_index}, Chunk {sort_index}: "
+                          f"Pred={pred_mean:.4f}±{pred_std:.4f}, Label={label_mean:.4f}")
         
-        print("Predictions:")
-        print(predictions)  
-        print("Labels:")
-        print(labels)
-        #print predictions with indices and values
-        print("Predictions with indices and values:")
-        for subj_index, subj_data in predictions.items():
-            print(f"Subject {subj_index}:")
-            for sort_index, value in subj_data.items():
-                print(f"  Sort index {sort_index}: {value}")
-        print("Labels with indices and values:")
-        for subj_index, subj_data in labels.items():
-            print(f"Subject {subj_index}:")
-            for sort_index, value in subj_data.items():
-                print(f"  Sort index {sort_index}: {value}")
-        print("--------------------------------")
-
-        #calculate_metrics(predictions, labels, self.config)
-        #if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
-        #    self.save_test_outputs(predictions, labels, self.config)
+        print("\n" + "=" * 60)
+        print("All predictions:")
+        for subj_index, subj_data in sorted(predictions.items()):
+            print(f"\nSubject {subj_index}:")
+            for sort_index in sorted(subj_data.keys()):
+                pred_chunk = subj_data[sort_index]
+                label_chunk = labels[subj_index][sort_index]
+                pred_mean = pred_chunk.mean().item()
+                label_mean = label_chunk.mean().item()
+                print(f"  Chunk {sort_index}: Pred={pred_mean:.4f}, Label={label_mean:.4f}")
+        
+        # Calculate metrics at the end
+        calculate_metrics(predictions, labels, self.config)
+        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
+            self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         """Inits parameters from args and the writer for TensorboardX."""
