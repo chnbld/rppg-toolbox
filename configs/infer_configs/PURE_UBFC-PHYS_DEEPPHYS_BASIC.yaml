@@ -34,8 +34,8 @@ TEST:
           DYNAMIC_DETECTION_FREQUENCY : 35
           USE_MEDIAN_FACE_BOX: False    # Disabled when dynamic detection is off
       RESIZE:
-        H: 64
-        W: 64
+        H: 68
+        W: 68
 DEVICE: cpu
 NUM_OF_GPU_TRAIN: 0 
 LOG:
