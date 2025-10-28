@@ -578,6 +578,7 @@ async def handle_client(websocket, path):
                 if command == 'frame':
                     # Receive frame
                     frame_data = data.get('frame')
+                    is_compressed = data.get('compressed', False)
                     
                     # Decode image
                     if isinstance(frame_data, str):
@@ -585,6 +586,13 @@ async def handle_client(websocket, path):
                     else:
                         # Assume binary
                         image_bytes = frame_data
+                    
+                    # Decompress if needed
+                    if is_compressed:
+                        try:
+                            image_bytes = gzip.decompress(image_bytes)
+                        except:
+                            pass  # Not compressed or already decompressed
                     
                     # Decode frame
                     nparr = np.frombuffer(image_bytes, np.uint8)

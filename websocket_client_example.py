@@ -17,17 +17,25 @@ API_URL = "ws://localhost:8765"
 
 async def send_frame_async(websocket, frame):
     """Send a frame via WebSocket"""
-    # Encode frame as JPEG
-    _, buffer = cv2.imencode('.jpg', frame)
+    # Resize frame to reduce size (max 320x240)
+    small_frame = cv2.resize(frame, (320, 240))
+    
+    # Encode frame as JPEG with lower quality (70 for smaller size)
+    encode_params = [cv2.IMWRITE_JPEG_QUALITY, 70]
+    _, buffer = cv2.imencode('.jpg', small_frame, encode_params)
     image_bytes = buffer.tobytes()
     
+    # Compress using gzip before encoding
+    compressed_bytes = gzip.compress(image_bytes)
+    
     # Encode as base64
-    frame_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    frame_b64 = base64.b64encode(compressed_bytes).decode('utf-8')
     
     # Send as JSON
     message = {
         'command': 'frame',
-        'frame': frame_b64
+        'frame': frame_b64,
+        'compressed': True  # Flag to indicate compression
     }
     
     await websocket.send(json.dumps(message))
