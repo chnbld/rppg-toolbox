@@ -173,6 +173,95 @@ def preprocess_for_rr(ppg_signal, fs=30):
     return filtered
 
 
+def calculate_cardiac_stress_index(hrv, heart_rate):
+    """
+    Calculate cardiac stress index from HRV and heart rate metrics.
+    
+    Cardiac stress is typically indicated by:
+    - Low HRV (low RMSSD, low SDNN)
+    - Elevated heart rate relative to resting
+    - Low pNN50 (reduced variability)
+    
+    Args:
+        hrv: Dictionary with HRV metrics
+        heart_rate: Current heart rate in BPM
+    
+    Returns:
+        Dictionary with stress metrics:
+        - stress_index: 0-100 scale (0 = low stress, 100 = high stress)
+        - stress_level: 'low', 'normal', 'elevated', 'high'
+        - autonomic_balance: Parasympathetic activity indicator
+    """
+    sdnn = hrv.get('sdnn', 0)
+    rmssd = hrv.get('rmssd', 0)
+    pnn50 = hrv.get('pnn50', 0)
+    mean_hr = hrv.get('mean_hr', heart_rate)
+    
+    # Calculate stress indicators (normalized to 0-100)
+    # Lower HRV = Higher stress
+    
+    # SDNN component (inverted: lower SDNN = higher stress)
+    if sdnn > 50:
+        sdnn_score = 0  # Very low stress
+    elif sdnn > 35:
+        sdnn_score = 20  # Low stress
+    elif sdnn > 20:
+        sdnn_score = 50  # Moderate stress
+    else:
+        sdnn_score = 80  # High stress
+    
+    # RMSSD component (inverted: lower RMSSD = higher stress)
+    if rmssd > 40:
+        rmssd_score = 0  # Very low stress
+    elif rmssd > 25:
+        rmssd_score = 25  # Low stress
+    elif rmssd > 15:
+        rmssd_score = 55  # Moderate stress
+    else:
+        rmssd_score = 85  # High stress
+    
+    # Heart rate component (elevated HR indicates stress)
+    hr_deviation = max(0, mean_hr - 65)  # Deviation from baseline
+    if hr_deviation > 20:
+        hr_score = 80  # Significantly elevated
+    elif hr_deviation > 10:
+        hr_score = 40  # Moderately elevated
+    else:
+        hr_score = 10  # Normal
+    
+    # Weighted average to get overall stress index
+    stress_index = (sdnn_score * 0.4 + rmssd_score * 0.4 + hr_score * 0.2)
+    
+    # Determine stress level
+    if stress_index < 25:
+        stress_level = 'low'
+    elif stress_index < 50:
+        stress_level = 'normal'
+    elif stress_index < 75:
+        stress_level = 'elevated'
+    else:
+        stress_level = 'high'
+    
+    # Autonomic balance indicator
+    if rmssd > 30:
+        balance = 'parasympathetic_dominant'  # Calm, relaxed
+    elif rmssd > 15:
+        balance = 'balanced'
+    else:
+        balance = 'sympathetic_dominant'  # Stressed, fight-or-flight
+    
+    return {
+        'stress_index': float(stress_index),
+        'stress_level': stress_level,
+        'autonomic_balance': balance,
+        'components': {
+            'sdnn_component': float(sdnn_score),
+            'rmssd_component': float(rmssd_score),
+            'heart_rate_component': float(hr_score)
+        }
+    }
+
+
 def calculate_hrv_from_ppg(ppg_signal, fs=30):
     """
     Calculate Heart Rate Variability (HRV) metrics from PPG signal.
@@ -421,7 +510,10 @@ def predict_from_frames(frames, config):
     # Calculate HRV metrics from the preprocessed signal
     hrv = calculate_hrv_from_ppg(ppg_processed_hr, fs=fs)
     
-    return predictions_np, bpm, rr, hrv
+    # Calculate cardiac stress index
+    stress = calculate_cardiac_stress_index(hrv, bpm)
+    
+    return predictions_np, bpm, rr, hrv, stress
 
 
 @app.route('/')
@@ -482,7 +574,7 @@ def infer_frame():
             chunk = np.array(frame_buffer[:chunk_size])
             
             # Run prediction
-            predictions, bpm, rr, hrv = predict_from_frames(chunk, config)
+            predictions, bpm, rr, hrv, stress = predict_from_frames(chunk, config)
             
             # Remove processed frames from buffer
             frame_buffer = frame_buffer[chunk_size:]
@@ -495,6 +587,7 @@ def infer_frame():
                 'bpm': bpm,
                 'respiratory_rate': rr,
                 'hrv': hrv,
+                'cardiac_stress': stress,
                 'bvp_signal': predictions.flatten().tolist(),
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),
@@ -551,7 +644,7 @@ def infer_frame_base64():
             chunk = np.array(frame_buffer[:chunk_size])
             
             # Run prediction
-            predictions, bpm, rr, hrv = predict_from_frames(chunk, config)
+            predictions, bpm, rr, hrv, stress = predict_from_frames(chunk, config)
             
             # Remove processed frames from buffer
             frame_buffer = frame_buffer[chunk_size:]
@@ -564,6 +657,7 @@ def infer_frame_base64():
                 'bpm': bpm,
                 'respiratory_rate': rr,
                 'hrv': hrv,
+                'cardiac_stress': stress,
                 'bvp_signal': predictions.flatten().tolist(),
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),
