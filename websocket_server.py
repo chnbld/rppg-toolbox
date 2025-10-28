@@ -6,6 +6,7 @@ Faster than REST API - uses persistent connection and binary frames
 import asyncio
 import sys
 import os
+import gzip
 
 try:
     import websockets
@@ -611,26 +612,25 @@ async def handle_client(websocket, path):
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
-                                    'respiratory_rate': rr,
-                                    'frames_processed': chunk_size,
-                                    # Essential HRV metrics
-                                    'hrv_sdnn': hrv.get('sdnn', 0),
-                                    'hrv_rmssd': hrv.get('rmssd', 0),
-                                    'hrv_pnn50': hrv.get('pnn50', 0),
-                                    # Essential stress metrics
-                                    'stress_index': stress.get('stress_index', 0),
-                                    'stress_level': stress.get('stress_level', 'unknown'),
-                                    'autonomic_balance': stress.get('autonomic_balance', 'unknown'),
-                                    # Essential workload metrics
-                                    'workload_index': workload.get('workload_index', 0),
-                                    'workload_level': workload.get('workload_level', 'unknown'),
-                                    'estimated_rpp': workload.get('estimated_rpp', 0),
-                                    'metabolic_demand': workload.get('metabolic_demand', 0),
-                                    # BVP summary only
-                                    'bvp_mean': float(np.mean(predictions)),
-                                    'bvp_std': float(np.std(predictions))
+                                    'rr': rr,
+                                    'n': chunk_size,
+                                    'sdnn': hrv.get('sdnn', 0),
+                                    'rmssd': hrv.get('rmssd', 0),
+                                    'pnn50': hrv.get('pnn50', 0),
+                                    'st': stress.get('stress_index', 0),
+                                    'sl': stress.get('stress_level', 'n'),
+                                    'ab': stress.get('autonomic_balance', 'b')[0],
+                                    'wi': workload.get('workload_index', 0),
+                                    'wl': workload.get('workload_level', 'm')[0],
+                                    'rpp': int(workload.get('estimated_rpp', 0)),
+                                    'met': workload.get('metabolic_demand', 0),
+                                    'mv': float(np.mean(predictions)),
+                                    'sv': float(np.std(predictions))
                                 }
-                                await websocket.send(json.dumps(response))
+                                # Compress JSON before sending
+                                json_str = json.dumps(response)
+                                compressed = gzip.compress(json_str.encode('utf-8'))
+                                await websocket.send(compressed)
                             except Exception as e:
                                 print(f"Error in prediction: {e}")
                                 await websocket.send(json.dumps({

@@ -10,6 +10,7 @@ import numpy as np
 import base64
 import json
 import time
+import gzip
 
 API_URL = "ws://localhost:8765"
 
@@ -31,8 +32,17 @@ async def send_frame_async(websocket, frame):
     
     await websocket.send(json.dumps(message))
     
-    # Wait for response
+    # Wait for response and decompress if needed
     response = await websocket.recv()
+    
+    # Try to decompress (compressed responses are bytes)
+    if isinstance(response, bytes):
+        try:
+            response = gzip.decompress(response).decode('utf-8')
+        except:
+            # Not compressed, treat as string
+            response = response.decode('utf-8') if isinstance(response, bytes) else response
+    
     return json.loads(response)
 
 
@@ -86,24 +96,39 @@ async def main():
                     result = await send_frame_async(websocket, frame)
                     
                     if result.get('status') == 'success':
+                        # Map short keys to display values
                         bpm = result.get('bpm', 0)
-                        rr = result.get('respiratory_rate', 0)
+                        rr = result.get('rr', 0)
+                        hrv_sdnn = result.get('sdnn', 0)
+                        hrv_rmssd = result.get('rmssd', 0)
+                        hrv_pnn50 = result.get('pnn50', 0)
+                        stress_idx = result.get('st', 0)
+                        stress_lvl = result.get('sl', 'n')
+                        auton_bal = result.get('ab', 'b')
+                        work_idx = result.get('wi', 0)
+                        work_lvl = result.get('wl', 'm')
+                        rpp = result.get('rpp', 0)
+                        met = result.get('met', 0)
+                        bvp_mean = result.get('mv', 0)
+                        bvp_std = result.get('sv', 0)
+                        n_frames = result.get('n', 0)
+                        
                         print(f"\n✓ BVP Signal Analysis:")
-                        print(f"  BVP Mean: {result.get('bvp_mean', 0):.4f}")
-                        print(f"  BVP Std: {result.get('bvp_std', 0):.4f}")
-                        print(f"  Signal Length: {result.get('frames_processed', 0)} points")
+                        print(f"  BVP Mean: {bvp_mean:.4f}")
+                        print(f"  BVP Std: {bvp_std:.4f}")
+                        print(f"  Signal Length: {n_frames} points")
                         print(f"  Heart Rate: {bpm:.2f} BPM")
                         print(f"  Respiratory Rate: {rr:.2f} breaths/min")
                         print(f"  HRV:")
-                        print(f"    SDNN: {result.get('hrv_sdnn', 0):.2f} ms")
-                        print(f"    RMSSD: {result.get('hrv_rmssd', 0):.2f} ms")
-                        print(f"    pNN50: {result.get('hrv_pnn50', 0):.2f}%")
-                        print(f"  Cardiac Stress: {result.get('stress_index', 0):.1f}/100 ({result.get('stress_level', 'unknown')})")
-                        print(f"    Autonomic Balance: {result.get('autonomic_balance', 'unknown')}")
-                        print(f"  Cardiac Workload: {result.get('workload_index', 0):.1f}/100 ({result.get('workload_level', 'unknown')})")
-                        print(f"    Estimated RPP: {result.get('estimated_rpp', 0):.0f}")
-                        print(f"    Metabolic Demand: {result.get('metabolic_demand', 0):.1f} MET")
-                        predictions.append(result.get('bvp_mean', 0))
+                        print(f"    SDNN: {hrv_sdnn:.2f} ms")
+                        print(f"    RMSSD: {hrv_rmssd:.2f} ms")
+                        print(f"    pNN50: {hrv_pnn50:.2f}%")
+                        print(f"  Cardiac Stress: {stress_idx:.1f}/100 ({stress_lvl})")
+                        print(f"    Autonomic Balance: {auton_bal}")
+                        print(f"  Cardiac Workload: {work_idx:.1f}/100 ({work_lvl})")
+                        print(f"    Estimated RPP: {rpp:.0f}")
+                        print(f"    Metabolic Demand: {met:.1f} MET")
+                        predictions.append(bvp_mean)
                     elif result.get('status') == 'buffering':
                         if frame_count % 30 == 0:
                             print(f"Buffering: {result['buffer_size']}/150 frames...")
