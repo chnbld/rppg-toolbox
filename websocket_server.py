@@ -58,7 +58,14 @@ def initialize_model(config_path):
     if not os.path.exists(config.INFERENCE.MODEL_PATH):
         raise ValueError(f"Model file not found: {config.INFERENCE.MODEL_PATH}")
     
-    model.load_state_dict(torch.load(config.INFERENCE.MODEL_PATH, map_location=device))
+    # Load state dict
+    state_dict = torch.load(config.INFERENCE.MODEL_PATH, map_location=device)
+    
+    # Remove 'module.' prefix if present (model was saved with DataParallel)
+    if any(k.startswith('module.') for k in state_dict.keys()):
+        state_dict = {k[7:] if k.startswith('module.') else k: v for k, v in state_dict.items()}
+    
+    model.load_state_dict(state_dict)
     model.eval()
     
     print(f"✓ Model loaded successfully (img_size={img_size})")
