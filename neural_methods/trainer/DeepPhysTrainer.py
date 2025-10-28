@@ -357,22 +357,40 @@ class DeepPhysTrainer(BaseTrainer):
             # For now, we'll just resize and normalize
             processed_frames = []
             for frame in frames_chunk:
+                # Debug: check frame shape
+                if chunk_idx == 0 and len(processed_frames) == 0:
+                    print(f"  Original frame shape: {frame.shape}")
+                
+                # Ensure frame has 3 channels
+                if len(frame.shape) == 2:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+                elif len(frame.shape) == 3 and frame.shape[2] != 3:
+                    if frame.shape[2] == 1:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+                    else:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
                 # Resize frame
                 resized = cv2.resize(frame, (config.TEST.DATA.PREPROCESS.RESIZE.W, 
                                             config.TEST.DATA.PREPROCESS.RESIZE.H))
+                # Normalize to [0, 1]
+                resized = resized.astype(np.float32) / 255.0
                 processed_frames.append(resized)
             
-            processed_frames = np.array(processed_frames)
+            processed_frames = np.array(processed_frames)  # Shape: (num_frames, H, W, C)
+            print(f"  Processed frames array shape: {processed_frames.shape}")
             
-            # Convert to tensor and run inference
-            frames_tensor = torch.from_numpy(processed_frames).float()
-            frames_tensor = frames_tensor.permute(0, 3, 1, 2)  # HWC to CHW
-            frames_tensor = frames_tensor.unsqueeze(0)  # Add batch dimension
+            # Convert to tensor and reshape for model
+            frames_tensor = torch.from_numpy(processed_frames).float()  # (num_frames, H, W, C)
+            print(f"  Tensor shape before permute: {frames_tensor.shape}")
+            
+            frames_tensor = frames_tensor.permute(0, 3, 1, 2)  # (num_frames, C, H, W)
+            print(f"  Tensor shape after permute: {frames_tensor.shape}")
+            
             frames_tensor = frames_tensor.to(self.device)
             
-            # Reshape for model: (batch, frames, channels, height, width)
-            N, T, C, H, W = frames_tensor.shape
-            frames_tensor = frames_tensor.view(N * T, C, H, W)
+            # Model expects input of shape (batch * frames, C, H, W)
+            # No need to add batch dimension since we're treating frames as batch
             
             with torch.no_grad():
                 pred_ppg = self.model(frames_tensor)
