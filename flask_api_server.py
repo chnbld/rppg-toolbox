@@ -659,6 +659,9 @@ def infer_frame():
             # Calculate mean prediction
             mean_pred = float(np.mean(predictions))
             
+            # Limit BVP signal to sample for response size management
+            bvp_signal_summary = predictions.flatten().tolist()[:50]  # First 50 points
+            
             return jsonify({
                 'status': 'success',
                 'bpm': bpm,
@@ -666,14 +669,14 @@ def infer_frame():
                 'hrv': hrv,
                 'cardiac_stress': stress,
                 'cardiac_workload': workload,
-                'bvp_signal': predictions.flatten().tolist(),
+                'bvp_signal_sample': bvp_signal_summary,
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),
                 'frames_processed': chunk_size,
                 'buffer_remaining': len(frame_buffer),
                 # For backward compatibility
                 'prediction': mean_pred,
-                'predictions': predictions.flatten().tolist()
+                'prediction_sample': bvp_signal_summary
             })
         else:
             return jsonify({
@@ -730,6 +733,9 @@ def infer_frame_base64():
             # Calculate mean prediction
             mean_pred = float(np.mean(predictions))
             
+            # Limit BVP signal to sample for response size management
+            bvp_signal_summary = predictions.flatten().tolist()[:50]  # First 50 points
+            
             return jsonify({
                 'status': 'success',
                 'bpm': bpm,
@@ -737,14 +743,14 @@ def infer_frame_base64():
                 'hrv': hrv,
                 'cardiac_stress': stress,
                 'cardiac_workload': workload,
-                'bvp_signal': predictions.flatten().tolist(),
+                'bvp_signal_sample': bvp_signal_summary,
                 'bvp_mean_amplitude': mean_pred,
                 'bvp_std_amplitude': float(np.std(predictions)),
                 'frames_processed': chunk_size,
                 'buffer_remaining': len(frame_buffer),
                 # For backward compatibility
                 'prediction': mean_pred,
-                'predictions': predictions.flatten().tolist()
+                'prediction_sample': bvp_signal_summary
             })
         else:
             return jsonify({

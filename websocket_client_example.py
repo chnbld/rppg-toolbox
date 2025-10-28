@@ -94,6 +94,7 @@ async def main():
                         print(f"\n✓ BVP Signal Analysis:")
                         print(f"  Mean Amplitude: {result.get('bvp_mean_amplitude', 0):.4f}")
                         print(f"  Std Amplitude: {result.get('bvp_std_amplitude', 0):.4f}")
+                        print(f"  Signal Length: {result.get('frames_processed', 0)} points (sample shown)")
                         print(f"  Heart Rate: {bpm:.2f} BPM")
                         print(f"  Respiratory Rate: {rr:.2f} breaths/min")
                         if hrv:

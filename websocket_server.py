@@ -605,6 +605,10 @@ async def handle_client(websocket, path):
                                 
                                 # Send prediction with HRV, stress, and workload metrics
                                 # Note: 'predictions' is the BVP (Blood Volume Pulse) signal
+                                # Limit BVP signal to prevent WebSocket message size issues
+                                # Send only summary stats, not full signal array
+                                bvp_signal_summary = predictions.flatten().tolist()[:50]  # First 50 points only
+                                
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
@@ -612,13 +616,13 @@ async def handle_client(websocket, path):
                                     'hrv': hrv,
                                     'cardiac_stress': stress,
                                     'cardiac_workload': workload,
-                                    'bvp_signal': predictions.flatten().tolist(),
+                                    'bvp_signal_sample': bvp_signal_summary,  # Sample only
                                     'bvp_mean_amplitude': float(np.mean(predictions)),
                                     'bvp_std_amplitude': float(np.std(predictions)),
                                     'frames_processed': chunk_size,
                                     # For backward compatibility
                                     'prediction': float(np.mean(predictions)),
-                                    'predictions': predictions.flatten().tolist()
+                                    'prediction_sample': bvp_signal_summary
                                 }
                                 await websocket.send(json.dumps(response))
                             except Exception as e:
