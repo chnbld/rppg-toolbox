@@ -257,12 +257,24 @@ class DeepPhysTrainer(BaseTrainer):
             print(f"\nProcessing: {os.path.basename(video_path)}")
             
             # Find corresponding BVP file
+            video_dir = os.path.dirname(video_path)
             video_name = os.path.basename(video_path).replace(".avi", "")
-            bvp_file = video_path.replace(".avi", ".csv").replace("vid_", "bvp_")
             
+            # Try different naming conventions
+            bvp_file = os.path.join(video_dir, video_name.replace("vid_", "bvp_") + ".csv")
+            
+            # If not found, try alternative locations
             if not os.path.exists(bvp_file):
-                print(f"Warning: BVP file not found: {bvp_file}")
+                bvp_file = video_path.replace(".avi", ".csv")
+                if not os.path.exists(bvp_file):
+                    bvp_file = os.path.join(video_dir, "bvp_" + video_name + ".csv")
+                    
+            if not os.path.exists(bvp_file):
+                print(f"Warning: BVP file not found (tried: {bvp_file})")
+                print(f"Continuing without ground truth labels...")
                 bvp_file = None
+            else:
+                print(f"Found BVP file: {bvp_file}")
             
             # Run streaming inference
             preds, labels = self.streaming_inference_from_video(video_path, bvp_file, config)
@@ -313,7 +325,18 @@ class DeepPhysTrainer(BaseTrainer):
         # Read video using streaming method
         chunk_size = 150  # Process 150 frames at a time
         from dataset.data_loader.UBFCPHYSLoader import UBFCPHYSLoader
-        loader = UBFCPHYSLoader("test", "", config.TEST.DATA, self.device)
+        import csv
+        
+        # Read full BVP labels if available
+        bvps_full = None
+        if bvp_path and os.path.exists(bvp_path):
+            print(f"Reading labels from: {bvp_path}")
+            bvp = []
+            with open(bvp_path, "r") as f:
+                d = csv.reader(f)
+                for row in d:
+                    bvp.append(float(row[0]))
+            bvps_full = np.asarray(bvp)
         
         print("\nStarting video stream processing...")
         chunk_idx = 0
@@ -323,9 +346,8 @@ class DeepPhysTrainer(BaseTrainer):
         ):
             print(f"\n[Processing chunk {chunk_idx + 1}] Frames {start_idx}-{end_idx}")
             
-            # Read labels for this chunk
-            if bvp_path:
-                bvps_full = loader.read_wave(bvp_path)
+            # Get labels for this chunk
+            if bvps_full is not None:
                 bvps_chunk = bvps_full[start_idx:end_idx]
             else:
                 bvps_chunk = None
