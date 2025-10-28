@@ -195,9 +195,26 @@ class DeepPhysTrainer(BaseTrainer):
                     labels[subj_index][sort_index] = labels_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
         
         print('')
-        calculate_metrics(predictions, labels, self.config)
-        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
-            self.save_test_outputs(predictions, labels, self.config)
+        print("Predictions:")
+        print(predictions)  
+        print("Labels:")
+        print(labels)
+        #print predictions with indices and values
+        print("Predictions with indices and values:")
+        for subj_index, subj_data in predictions.items():
+            print(f"Subject {subj_index}:")
+            for sort_index, value in subj_data.items():
+                print(f"  Sort index {sort_index}: {value}")
+        print("Labels with indices and values:")
+        for subj_index, subj_data in labels.items():
+            print(f"Subject {subj_index}:")
+            for sort_index, value in subj_data.items():
+                print(f"  Sort index {sort_index}: {value}")
+        print("--------------------------------")
+        
+        #calculate_metrics(predictions, labels, self.config)
+        #if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
+        #    self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         """Inits parameters from args and the writer for TensorboardX."""
