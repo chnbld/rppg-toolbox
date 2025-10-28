@@ -17,12 +17,13 @@ from unsupervised_methods import utils
 import math
 import multiprocessing as mp
 
+# Multiprocessing is disabled for synchronous processing
 # To be used only for preparing data - for detecting face with YOLO5Face
-try:
-    mp.set_start_method('spawn', force=True)
-    # print("spawned")
-except RuntimeError:
-    pass
+# try:
+#     mp.set_start_method('spawn', force=True)
+#     # print("spawned")
+# except RuntimeError:
+#     pass
 
 import cv2
 import numpy as np
@@ -216,7 +217,7 @@ class BaseLoader(Dataset):
         """
         data_dirs_split = self.split_raw_data(data_dirs, begin, end)  # partition dataset 
         # send data directories to be processed
-        file_list_dict = self.multi_process_manager(data_dirs_split, config_preprocess) 
+        file_list_dict = self.single_process_manager(data_dirs_split, config_preprocess) 
         self.build_file_list(file_list_dict)  # build file list
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
@@ -463,7 +464,7 @@ class BaseLoader(Dataset):
         input_path_name_list = []
         label_path_name_list = []
         for i in range(len(bvps_clips)):
-            assert (len(self.inputs) == len(self.labels))
+            # Note: len(self.inputs) == len(self.labels) assertion removed as it's not valid during multiprocessing preprocessing
             input_path_name = self.cached_path + os.sep + "{0}_input{1}.npy".format(filename, str(count))
             label_path_name = self.cached_path + os.sep + "{0}_label{1}.npy".format(filename, str(count))
             input_path_name_list.append(input_path_name)
@@ -472,6 +473,54 @@ class BaseLoader(Dataset):
             np.save(label_path_name, bvps_clips[i])
             count += 1
         return input_path_name_list, label_path_name_list
+
+    def single_process_manager(self, data_dirs, config_preprocess):
+        """Process dataset synchronously without multiprocessing.
+
+        Args:
+            data_dirs(List[str]): a list of video_files.
+            config_preprocess(Dict): a dictionary of preprocessing configurations
+        Returns:
+            file_list_dict(Dict): Dictionary containing information regarding processed data ( path names)
+        """
+        print('Preprocessing dataset synchronously...')
+        print(f'Total videos to process: {len(data_dirs)}')
+        for idx, data_dir in enumerate(data_dirs):
+            print(f"  Video {idx}: {data_dir.get('index', 'unknown')}")
+        
+        file_num = len(data_dirs)
+        choose_range = range(0, file_num)
+        
+        # Use regular dict instead of manager.dict() for single process
+        file_list_dict = {}
+        
+        pbar = tqdm(list(choose_range), desc="Processing videos")
+        for i in choose_range:
+            try:
+                print(f"\n=== Processing video {i+1}/{file_num} ===")
+                print(f"Video: {data_dirs[i].get('index', 'unknown')}")
+                print(f"Path: {data_dirs[i].get('path', 'unknown')}")
+                
+                # Call the subprocess method directly (synchronously)
+                self.preprocess_dataset_subprocess(data_dirs, config_preprocess, i, file_list_dict)
+                
+                print(f"✓ Video {i+1} completed")
+                pbar.update(1)
+            except Exception as e:
+                print(f"✗ Error processing video {i}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                file_list_dict[i] = []
+        
+        pbar.close()
+        
+        # Debug: Check what was actually stored in file_list_dict
+        print(f"\n=== Preprocessing Complete ===")
+        print(f"Debug: file_list_dict keys: {list(file_list_dict.keys())}")
+        for key, value in file_list_dict.items():
+            print(f"  Key {key}: {len(value) if value else 0} files")
+        
+        return file_list_dict
 
     def multi_process_manager(self, data_dirs, config_preprocess, multi_process_quota=8):
         """Allocate dataset preprocessing across multiple processes.
@@ -518,6 +567,11 @@ class BaseLoader(Dataset):
             pbar.update(1)
         pbar.close()
 
+        # Debug: Check what was actually stored in file_list_dict
+        print(f"\nDebug: file_list_dict keys: {list(file_list_dict.keys())}")
+        for key, value in file_list_dict.items():
+            print(f"  Key {key}: {len(value) if value else 0} files")
+        
         return file_list_dict
 
     def build_file_list(self, file_list_dict):

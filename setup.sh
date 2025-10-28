@@ -11,7 +11,7 @@ MODE=$1
 # Function to set up using conda
 conda_setup() {
     echo "Setting up using conda..."
-    conda remove --name rppg-toolbox --all -y || exit 1
+    #conda remove --name rppg-toolbox --all -y || exit 1
     conda create -n rppg-toolbox python=3.8 -y || exit 1
     source "$(conda info --base)/etc/profile.d/conda.sh" || exit 1
     conda activate rppg-toolbox || exit 1

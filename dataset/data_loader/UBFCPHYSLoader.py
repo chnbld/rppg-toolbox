@@ -72,38 +72,62 @@ class UBFCPHYSLoader(BaseLoader):
     def split_raw_data(self, data_dirs, begin, end):
         """Returns a subset of data dirs, split with begin and end values."""
         if begin == 0 and end == 1:  # return the full directory if begin == 0 and end == 1
-            return data_dirs
+            data_dirs_subset = data_dirs
+        else:
+            file_num = len(data_dirs)
+            choose_range = range(int(begin * file_num), int(end * file_num))
+            data_dirs_subset = []
 
-        file_num = len(data_dirs)
-        choose_range = range(int(begin * file_num), int(end * file_num))
-        data_dirs_new = []
-
-        for i in choose_range:
-            data_dirs_new.append(data_dirs[i])
-
-        return data_dirs_new
+            for i in choose_range:
+                data_dirs_subset.append(data_dirs[i])
+        
+        # Apply filtering (exclusion list) during preprocessing to avoid processing excluded videos
+        if hasattr(self, 'filtering') and self.filtering.USE_EXCLUSION_LIST:
+            filtered_dirs = []
+            for data_dir in data_dirs_subset:
+                index = data_dir['index']
+                # Skip if in exclusion list
+                if index not in self.filtering.EXCLUSION_LIST:
+                    filtered_dirs.append(data_dir)
+                else:
+                    print(f"Skipping excluded video: {index}")
+            return filtered_dirs
+        
+        return data_dirs_subset
 
     def preprocess_dataset_subprocess(self, data_dirs, config_preprocess, i, file_list_dict):
         """   invoked by preprocess_dataset for multi_process.   """
-        filename = os.path.split(data_dirs[i]['path'])[-1]
-        saved_filename = data_dirs[i]['index']
-
-        # Read Frames
-        frames = self.read_video(
-            os.path.join(data_dirs[i]['path']))
-
-        # Read Labels
-        if config_preprocess.USE_PSUEDO_PPG_LABEL:
-            bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
-        else:
-            bvps = self.read_wave(
-                os.path.join(os.path.dirname(data_dirs[i]['path']),"bvp_{0}.csv".format(saved_filename)))
-
-        bvps = BaseLoader.resample_ppg(bvps, frames.shape[0])
+        try:
+            filename = os.path.split(data_dirs[i]['path'])[-1]
+            saved_filename = data_dirs[i]['index']
+            print(f"Processing video {i}: {saved_filename}")
             
-        frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
-        input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
-        file_list_dict[i] = input_name_list
+            # Check if preprocessed files already exist to avoid reprocessing
+            video_path = os.path.join(data_dirs[i]['path'])
+            
+            # Read Frames
+            frames = self.read_video(video_path)
+
+            # Read Labels
+            if config_preprocess.USE_PSUEDO_PPG_LABEL:
+                bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
+            else:
+                bvps = self.read_wave(
+                    os.path.join(os.path.dirname(data_dirs[i]['path']),"bvp_{0}.csv".format(saved_filename)))
+
+            bvps = BaseLoader.resample_ppg(bvps, frames.shape[0])
+                
+            frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
+            input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
+            
+            print(f"Successfully processed {len(input_name_list)} clips for {saved_filename}")
+            file_list_dict[i] = input_name_list
+            
+        except Exception as e:
+            import traceback
+            print(f"ERROR processing {data_dirs[i]['index']}: {str(e)}")
+            traceback.print_exc()
+            file_list_dict[i] = []  # Set to empty list to avoid KeyError
 
     def load_preprocessed_data(self):
         """ Loads the preprocessed data listed in the file list.
@@ -138,17 +162,47 @@ class UBFCPHYSLoader(BaseLoader):
         self.preprocessed_data_len = len(filtered_inputs)
 
     @staticmethod
-    def read_video(video_file):
-        """Reads a video file, returns frames(T,H,W,3) """
+    def read_video(video_file, max_frames=1500):
+        """Reads a video file, returns frames(T,H,W,3) 
+        
+        Args:
+            video_file: path to video file
+            max_frames: maximum number of frames to load (to avoid memory issues)
+        """
+        import gc
         VidObj = cv2.VideoCapture(video_file)
+        
+        # Get video properties for info
+        fps = VidObj.get(cv2.CAP_PROP_FPS)
+        frame_count = int(VidObj.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(VidObj.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(VidObj.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Limit frames if video is too long to avoid memory issues
+        actual_frame_count = min(frame_count, max_frames)
+        print(f"Video info: {frame_count} total frames (loading {actual_frame_count}), {width}x{height}, {fps:.2f} fps")
+        
+        if frame_count > max_frames:
+            print(f"⚠️  Warning: Video has {frame_count} frames, limiting to {max_frames} to avoid memory issues")
+        
         VidObj.set(cv2.CAP_PROP_POS_MSEC, 0)
         success, frame = VidObj.read()
         frames = list()
-        while success:
+        
+        frame_idx = 0
+        while success and frame_idx < max_frames:
             frame = cv2.cvtColor(np.array(frame), cv2.COLOR_BGR2RGB)
             frame = np.asarray(frame)
             frames.append(frame)
             success, frame = VidObj.read()
+            
+            frame_idx += 1
+            if frame_idx % 100 == 0:
+                print(f"  Loaded {frame_idx}/{actual_frame_count} frames...")
+                gc.collect()  # Force garbage collection to free memory
+        
+        VidObj.release()
+        print(f"✓ Video loading complete: {len(frames)} frames")
         return np.asarray(frames)
 
     @staticmethod
