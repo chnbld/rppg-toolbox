@@ -194,7 +194,6 @@ class DeepPhysTrainer(BaseTrainer):
                     predictions[subj_index][sort_index] = pred_ppg_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
                     labels[subj_index][sort_index] = labels_test[idx * self.chunk_len:(idx + 1) * self.chunk_len]
         
-        print('')
         print("Predictions:")
         print(predictions)  
         print("Labels:")
@@ -211,7 +210,7 @@ class DeepPhysTrainer(BaseTrainer):
             for sort_index, value in subj_data.items():
                 print(f"  Sort index {sort_index}: {value}")
         print("--------------------------------")
-        
+
         #calculate_metrics(predictions, labels, self.config)
         #if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
         #    self.save_test_outputs(predictions, labels, self.config)

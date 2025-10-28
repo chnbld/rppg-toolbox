@@ -30,9 +30,9 @@ TEST:
         USE_LARGE_FACE_BOX: True
         LARGE_BOX_COEF: 1.5
         DETECTION:
-          DO_DYNAMIC_DETECTION: False   # Disabled to reduce memory usage
+          DO_DYNAMIC_DETECTION: True   # Disabled to reduce memory usage
           DYNAMIC_DETECTION_FREQUENCY : 35
-          USE_MEDIAN_FACE_BOX: False    # Disabled when dynamic detection is off
+          USE_MEDIAN_FACE_BOX: True    # Disabled when dynamic detection is off
       RESIZE:
         H: 72
         W: 72
