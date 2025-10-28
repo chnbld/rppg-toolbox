@@ -41,11 +41,9 @@ def initialize_model(config_path):
     
     # Load config
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config_file', default=config_path, type=str)
-    args = parser.parse_args(['--config_file', config_path])
-    
     from main import add_args
+    
+    parser = argparse.ArgumentParser()
     parser = add_args(parser)
     args = parser.parse_args(['--config_file', config_path])
     
