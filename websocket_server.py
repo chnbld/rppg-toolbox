@@ -605,24 +605,30 @@ async def handle_client(websocket, path):
                                 
                                 # Send prediction with HRV, stress, and workload metrics
                                 # Note: 'predictions' is the BVP (Blood Volume Pulse) signal
-                                # Limit BVP signal to prevent WebSocket message size issues
-                                # Send only summary stats, not full signal array
-                                bvp_signal_summary = predictions.flatten().tolist()[:50]  # First 50 points only
+                                # Limit data to prevent WebSocket message size issues
                                 
+                                # Build minimal response with essential metrics only
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
                                     'respiratory_rate': rr,
-                                    'hrv': hrv,
-                                    'cardiac_stress': stress,
-                                    'cardiac_workload': workload,
-                                    'bvp_signal_sample': bvp_signal_summary,  # Sample only
-                                    'bvp_mean_amplitude': float(np.mean(predictions)),
-                                    'bvp_std_amplitude': float(np.std(predictions)),
                                     'frames_processed': chunk_size,
-                                    # For backward compatibility
-                                    'prediction': float(np.mean(predictions)),
-                                    'prediction_sample': bvp_signal_summary
+                                    # Essential HRV metrics
+                                    'hrv_sdnn': hrv.get('sdnn', 0),
+                                    'hrv_rmssd': hrv.get('rmssd', 0),
+                                    'hrv_pnn50': hrv.get('pnn50', 0),
+                                    # Essential stress metrics
+                                    'stress_index': stress.get('stress_index', 0),
+                                    'stress_level': stress.get('stress_level', 'unknown'),
+                                    'autonomic_balance': stress.get('autonomic_balance', 'unknown'),
+                                    # Essential workload metrics
+                                    'workload_index': workload.get('workload_index', 0),
+                                    'workload_level': workload.get('workload_level', 'unknown'),
+                                    'estimated_rpp': workload.get('estimated_rpp', 0),
+                                    'metabolic_demand': workload.get('metabolic_demand', 0),
+                                    # BVP summary only
+                                    'bvp_mean': float(np.mean(predictions)),
+                                    'bvp_std': float(np.std(predictions))
                                 }
                                 await websocket.send(json.dumps(response))
                             except Exception as e:
