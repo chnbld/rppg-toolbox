@@ -425,14 +425,19 @@ async def handle_client(websocket, path):
                                 frame_buffer = frame_buffer[chunk_size:]
                                 
                                 # Send prediction with HRV metrics
+                                # Note: 'predictions' is the BVP (Blood Volume Pulse) signal
                                 response = {
                                     'status': 'success',
                                     'bpm': bpm,
                                     'respiratory_rate': rr,
                                     'hrv': hrv,
+                                    'bvp_signal': predictions.flatten().tolist(),
+                                    'bvp_mean_amplitude': float(np.mean(predictions)),
+                                    'bvp_std_amplitude': float(np.std(predictions)),
+                                    'frames_processed': chunk_size,
+                                    # For backward compatibility
                                     'prediction': float(np.mean(predictions)),
-                                    'predictions': predictions.flatten().tolist(),
-                                    'frames_processed': chunk_size
+                                    'predictions': predictions.flatten().tolist()
                                 }
                                 await websocket.send(json.dumps(response))
                             except Exception as e:

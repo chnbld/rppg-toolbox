@@ -89,7 +89,9 @@ async def main():
                         bpm = result.get('bpm', 0)
                         rr = result.get('respiratory_rate', 0)
                         hrv = result.get('hrv', {})
-                        print(f"\n✓ Prediction: {result['prediction']:.4f}")
+                        print(f"\n✓ BVP Signal Analysis:")
+                        print(f"  Mean Amplitude: {result.get('bvp_mean_amplitude', 0):.4f}")
+                        print(f"  Std Amplitude: {result.get('bvp_std_amplitude', 0):.4f}")
                         print(f"  Heart Rate: {bpm:.2f} BPM")
                         print(f"  Respiratory Rate: {rr:.2f} breaths/min")
                         if hrv:
@@ -98,7 +100,7 @@ async def main():
                             print(f"    RMSSD: {hrv.get('rmssd', 0):.2f} ms")
                             print(f"    pNN50: {hrv.get('pnn50', 0):.2f}%")
                         print(f"  Frames processed: {result['frames_processed']}")
-                        predictions.append(result['prediction'])
+                        predictions.append(result.get('bvp_mean_amplitude', result['prediction']))
                     elif result.get('status') == 'buffering':
                         if frame_count % 30 == 0:
                             print(f"Buffering: {result['buffer_size']}/150 frames...")

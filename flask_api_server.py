@@ -495,10 +495,14 @@ def infer_frame():
                 'bpm': bpm,
                 'respiratory_rate': rr,
                 'hrv': hrv,
-                'prediction': mean_pred,
-                'predictions': predictions.flatten().tolist(),
+                'bvp_signal': predictions.flatten().tolist(),
+                'bvp_mean_amplitude': mean_pred,
+                'bvp_std_amplitude': float(np.std(predictions)),
                 'frames_processed': chunk_size,
-                'buffer_remaining': len(frame_buffer)
+                'buffer_remaining': len(frame_buffer),
+                # For backward compatibility
+                'prediction': mean_pred,
+                'predictions': predictions.flatten().tolist()
             })
         else:
             return jsonify({
@@ -560,10 +564,14 @@ def infer_frame_base64():
                 'bpm': bpm,
                 'respiratory_rate': rr,
                 'hrv': hrv,
-                'prediction': mean_pred,
-                'predictions': predictions.flatten().tolist(),
+                'bvp_signal': predictions.flatten().tolist(),
+                'bvp_mean_amplitude': mean_pred,
+                'bvp_std_amplitude': float(np.std(predictions)),
                 'frames_processed': chunk_size,
-                'buffer_remaining': len(frame_buffer)
+                'buffer_remaining': len(frame_buffer),
+                # For backward compatibility
+                'prediction': mean_pred,
+                'predictions': predictions.flatten().tolist()
             })
         else:
             return jsonify({
