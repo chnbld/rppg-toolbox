@@ -113,7 +113,6 @@ async def process_video(video_path):
                         print(f"  Cardiac Workload: {work_idx:.1f}/100 ({work_lvl})")
                         print(f"    Estimated RPP: {rpp:.0f}")
                         print(f"    Metabolic Demand: {met:.1f} MET")
-                        predictions.append(bvp_mean)
                     elif result.get('status') == 'buffering':
                         if frame_count % 30 == 0:
                             print(f"Buffering: {result['buffer_size']}/150 frames...")
