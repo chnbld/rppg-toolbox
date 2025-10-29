@@ -87,7 +87,7 @@ async def main():
             print(f"Server status: {status}")
             
             # Example: Send frames from a video
-            video_path = "/home/ubuntu/test.mp4"  # Update this
+            video_path = "/home/ubuntu/RAWDATA/s1/vid_s1_T1.avi"  # Update this
             print(f"\nProcessing video: {video_path}")
             
             cap = cv2.VideoCapture(video_path)
