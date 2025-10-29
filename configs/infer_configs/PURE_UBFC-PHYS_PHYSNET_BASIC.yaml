@@ -1,6 +1,6 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"  # "train_and_test"  or "only_test"
-STREAMING_INFERENCE: False
+STREAMING_INFERENCE: True
 TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: True
