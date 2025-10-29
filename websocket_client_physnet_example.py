@@ -76,28 +76,50 @@ async def process_video(video_path):
                     # Decompress if needed
                     try:
                         decompressed = gzip.decompress(response)
-                        response_data = json.loads(decompressed.decode('utf-8'))
+                        result = json.loads(decompressed.decode('utf-8'))
                     except:
-                        response_data = json.loads(response)
+                        result = json.loads(response)
                     
-                    # Print results if we got predictions
-                    if response_data.get('status') == 'success':
-                        print(f"\n✓ Prediction Results (Frame {frame_count}):")
-                        print(f"  Heart Rate: {response_data.get('bpm', 0):.1f} BPM")
-                        print(f"  Respiratory Rate: {response_data.get('rr', 0):.1f} breaths/min")
-                        print(f"  SDNN: {response_data.get('sdnn', 0):.2f} ms")
-                        print(f"  RMSSD: {response_data.get('rmssd', 0):.2f} ms")
-                        print(f"  pNN50: {response_data.get('pnn50', 0):.2f}%")
-                        print(f"  Stress Index: {response_data.get('st', 0):.1f}")
-                        print(f"  Stress Level: {response_data.get('sl', 'normal')}")
-                        print(f"  Workload Index: {response_data.get('wi', 0):.1f}")
-                        print(f"  Workload Level: {response_data.get('wl', 'moderate')}")
-                        print(f"  Estimated RPP: {response_data.get('rpp', 0)}")
-                        print(f"  Metabolic Demand: {response_data.get('met', 0):.1f} MET")
-                    elif response_data.get('status') == 'buffering':
-                        print(f"\r  Buffering: {response_data.get('buffer_size', 0)}/{response_data.get('chunk_size', 128)} frames", end='')
-                    elif response_data.get('status') == 'error':
-                        print(f"\n  Error: {response_data.get('error', 'Unknown error')}")
+                    if result.get('status') == 'success':
+                        # Map short keys to display values
+                        bpm = result.get('bpm', 0)
+                        rr = result.get('rr', 0)
+                        hrv_sdnn = result.get('sdnn', 0)
+                        hrv_rmssd = result.get('rmssd', 0)
+                        hrv_pnn50 = result.get('pnn50', 0)
+                        stress_idx = result.get('st', 0)
+                        stress_lvl = result.get('sl', 'n')
+                        auton_bal = result.get('ab', 'b')
+                        work_idx = result.get('wi', 0)
+                        work_lvl = result.get('wl', 'm')
+                        rpp = result.get('rpp', 0)
+                        met = result.get('met', 0)
+                        bvp_mean = result.get('mv', 0)
+                        bvp_std = result.get('sv', 0)
+                        n_frames = result.get('n', 0)
+                        
+                        print(f"\n✓ BVP Signal Analysis:")
+                        print(f"  BVP Mean: {bvp_mean:.4f}")
+                        print(f"  BVP Std: {bvp_std:.4f}")
+                        print(f"  Signal Length: {n_frames} points")
+                        print(f"  Heart Rate: {bpm:.2f} BPM")
+                        print(f"  Respiratory Rate: {rr:.2f} breaths/min")
+                        print(f"  HRV:")
+                        print(f"    SDNN: {hrv_sdnn:.2f} ms")
+                        print(f"    RMSSD: {hrv_rmssd:.2f} ms")
+                        print(f"    pNN50: {hrv_pnn50:.2f}%")
+                        print(f"  Cardiac Stress: {stress_idx:.1f}/100 ({stress_lvl})")
+                        print(f"    Autonomic Balance: {auton_bal}")
+                        print(f"  Cardiac Workload: {work_idx:.1f}/100 ({work_lvl})")
+                        print(f"    Estimated RPP: {rpp:.0f}")
+                        print(f"    Metabolic Demand: {met:.1f} MET")
+                        predictions.append(bvp_mean)
+                    elif result.get('status') == 'buffering':
+                        if frame_count % 30 == 0:
+                            print(f"Buffering: {result['buffer_size']}/150 frames...")
+                    elif result.get('status') == 'error':
+                        print(f"\n✗ Error: {result.get('error', 'Unknown error')}")
+                        break
                 
                 except asyncio.TimeoutError:
                     # No response yet, continue
