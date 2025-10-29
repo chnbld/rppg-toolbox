@@ -11,7 +11,7 @@ TEST:
       TASK_LIST: ['T1', 'T2', 'T3']
     FS: 35
     DATASET: UBFC-PHYS
-    DO_PREPROCESS: True                  # if first time, should be true
+    DO_PREPROCESS: False                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/home/ubuntu/RAWDATA"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/home/ubuntu/PreprocessedDataPhysformer"    # Processed dataset save path, need to be updated
