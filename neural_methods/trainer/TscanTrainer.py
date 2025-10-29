@@ -26,7 +26,7 @@ class TscanTrainer(BaseTrainer):
         self.model_file_name = config.TRAIN.MODEL_FILE_NAME
         self.batch_size = config.TRAIN.BATCH_SIZE
         self.num_of_gpu = config.NUM_OF_GPU_TRAIN
-        self.base_len = self.num_of_gpu * self.frame_depth
+        self.base_len = max(1,self.num_of_gpu) * self.frame_depth
         self.chunk_len = config.TRAIN.DATA.PREPROCESS.CHUNK_LENGTH
         self.config = config 
         self.min_valid_loss = None
