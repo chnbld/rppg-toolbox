@@ -1,6 +1,6 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"      # "train_and_test"  or "only_test"
-STREAMING_INFERENCE: True     # Set to True to skip preprocessing and run direct streaming inference
+STREAMING_INFERENCE: False     # Set to True to skip preprocessing and run direct streaming inference
 TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: True
