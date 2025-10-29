@@ -1,5 +1,6 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"      # "train_and_test"  or "only_test"
+STREAMING_INFERENCE: False
 TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: False                   # to use provided validation dataset to find the best epoch, should be false

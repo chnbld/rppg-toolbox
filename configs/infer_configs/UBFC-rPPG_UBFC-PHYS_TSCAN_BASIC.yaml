@@ -1,5 +1,6 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"      # "train_and_test"  or "only_test"
+STREAMING_INFERENCE: False
 TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: True
@@ -14,7 +15,7 @@ TEST:
     DATASET: UBFC-PHYS
     DO_PREPROCESS: True                    # if first time, should be true
     DATA_FORMAT: NDCHW
-    DATA_PATH: "/home/ubuntu/RawData"                     # Raw dataset path, need to be updated
+    DATA_PATH: "/home/ubuntu/RAWDATA"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/home/ubuntu/PreprocessedDataTscan"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.0
