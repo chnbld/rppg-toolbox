@@ -16,7 +16,7 @@ _C.BASE = ['']
 # -----------------------------------------------------------------------------
 # Streaming Inference settings
 # -----------------------------------------------------------------------------
-_C.STREAMING_INFERENCE = True  # Set to True to skip preprocessing and run direct streaming inference
+_C.STREAMING_INFERENCE = False  # Set to True to skip preprocessing and run direct streaming inference
 
 # -----------------------------------------------------------------------------
 # Train settings
