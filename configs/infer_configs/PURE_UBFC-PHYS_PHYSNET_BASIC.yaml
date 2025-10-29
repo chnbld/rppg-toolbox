@@ -1,29 +1,21 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"  # "train_and_test"  or "only_test"
+STREAMING_INFERENCE: False
 TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: True
   DATA:
     FILTERING:
       USE_EXCLUSION_LIST: True
-      EXCLUSION_LIST: [
-      's3_T1', 's8_T1', 's9_T1', 's26_T1', 's28_T1', 's30_T1', 's31_T1', 's32_T1',
-      's33_T1', 's40_T1', 's52_T1', 's53_T1', 's54_T1', 's56_T1', 's1_T2', 's4_T2',
-      's6_T2', 's8_T2', 's9_T2', 's11_T2', 's12_T2', 's13_T2', 's14_T2', 's19_T2',
-      's21_T2', 's22_T2', 's25_T2', 's26_T2', 's27_T2', 's28_T2', 's31_T2', 's32_T2',
-      's33_T2', 's35_T2', 's38_T2', 's39_T2', 's41_T2', 's42_T2', 's45_T2', 's47_T2',
-      's48_T2', 's52_T2', 's53_T2', 's55_T2', 's5_T3', 's8_T3', 's9_T3', 's10_T3',
-      's13_T3', 's14_T3', 's17_T3', 's22_T3', 's25_T3', 's26_T3', 's28_T3', 's30_T3',
-      's32_T3', 's33_T3', 's35_T3', 's37_T3', 's40_T3', 's47_T3', 's48_T3', 's49_T3',
-      's50_T3', 's52_T3', 's53_T3']
-      SELECT_TASKS: True
+      EXCLUSION_LIST: ['s1_T2', 's1_T3']
+      SELECT_TASKS: False
       TASK_LIST: ['T1', 'T2', 'T3']
     FS: 35
     DATASET: UBFC-PHYS
-    DO_PREPROCESS: False                  # if first time, should be true
+    DO_PREPROCESS: True                  # if first time, should be true
     DATA_FORMAT: NCDHW
-    DATA_PATH: "/gscratch/ubicomp/xliu0/data3/mnt/Datasets/UBFC-PHYS/RawData"                     # Raw dataset path, need to be updated
-    CACHED_PATH: "/gscratch/ubicomp/xliu0/data3/mnt/Datasets/rppg_toolbox/PreprocessedData"    # Processed dataset save path, need to be updated
+    DATA_PATH: "/home/ubuntu/RAWDATA"          # Raw dataset path
+    CACHED_PATH: "/home/ubuntu/PreprocessedDataPhysnet"    # Processed dataset save path
     EXP_DATA_NAME: ""
     BEGIN: 0.0
     END: 1.0
@@ -44,8 +36,8 @@ TEST:
       RESIZE:
         H: 72
         W: 72
-DEVICE: cuda:0
-NUM_OF_GPU_TRAIN: 1
+DEVICE: cpu
+NUM_OF_GPU_TRAIN: 0
 LOG:
   PATH: runs/exp
 MODEL:
